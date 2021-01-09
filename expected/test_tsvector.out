@@ -1,0 +1,118 @@
+create or replace language plpython3u;
+create extension if not exists pg_rollup;
+NOTICE:  extension "pg_rollup" already exists, skipping
+create temporary table messages (
+    id serial primary key,
+    id_user integer,
+    text text
+);
+insert into messages (id_user, text) values
+    (0, 'president obama'),
+    (0, 'obama was president'),
+    (1, 'president trump'),
+    (1, 'president bush'),
+    (2, 'george bush senior'),
+    (2, 'obama obama obama obama obama obama'),
+    (3, ''),
+    (2, ''),
+    (3, NULL),
+    (2, NULL),
+    (4, NULL),
+    (NULL, ''),
+    (NULL, 'obama president'),
+    (NULL, 'president trump');
+    
+select create_rollup(
+    'messages',
+    'messages_rollup1',
+    wheres => $$
+        unnest(tsvector_to_array(to_tsvector(text))) AS tokens
+    $$
+);
+NOTICE:  view "messages_rollup1_view" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'messages',
+    'messages_rollup2',
+    wheres => $$
+        unnest(tsvector_to_array(to_tsvector(text))) AS tokens
+    $$,
+    distincts => $$
+        id_user
+    $$
+);
+NOTICE:  view "messages_rollup2_view" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'messages',
+    'messages_rollup3',
+    distincts => $$
+        id_user
+    $$
+);
+NOTICE:  relation "messages_index_distinct_id_user" already exists, skipping
+NOTICE:  view "messages_rollup3_view" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('messages_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('messages_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('messages_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+insert into messages (id_user, text) values
+    (0, 'president obama'),
+    (0, 'obama was president'),
+    (1, 'president trump'),
+    (1, 'president bush'),
+    (2, 'george bush senior'),
+    (2, 'obama obama obama obama obama obama'),
+    (3, ''),
+    (2, ''),
+    (3, NULL),
+    (2, NULL),
+    (4, NULL),
+    (NULL, ''),
+    (NULL, 'obama president'),
+    (NULL, 'president trump');
+select assert_rollup('messages_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('messages_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('messages_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+

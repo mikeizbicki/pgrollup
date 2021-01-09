@@ -1,0 +1,10 @@
+version: '3.3'
+
+services:
+  db:
+    build: .
+    volumes:
+      - .:/tmp/pg_rollup
+    environment:
+      - POSTGRES_USER=root
+      - POSTGRES_PASSWORD=pass
