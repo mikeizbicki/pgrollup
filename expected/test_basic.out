@@ -37,7 +37,7 @@ select create_rollup(
     'test_rollup1',
     wheres => 'name'
 );
-NOTICE:  view "test_rollup1_view" will be a temporary view
+NOTICE:  view "test_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -48,7 +48,7 @@ select create_rollup(
     'test_rollup2',
     wheres => 'name,num'
 );
-NOTICE:  view "test_rollup2_view" will be a temporary view
+NOTICE:  view "test_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -60,7 +60,7 @@ select create_rollup(
     wheres => 'name',
     distincts => 'num'
 );
-NOTICE:  view "test_rollup3_view" will be a temporary view
+NOTICE:  view "test_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -72,7 +72,7 @@ select create_rollup(
     distincts => 'name,num'
 );
 NOTICE:  relation "test_index_distinct_num" already exists, skipping
-NOTICE:  view "test_rollup4_view" will be a temporary view
+NOTICE:  view "test_rollup4_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

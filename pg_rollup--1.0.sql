@@ -3,10 +3,10 @@
 
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
-    sql = f'select * from {rollup_name}_view except select * from {rollup_name};';
+    sql = f'select * from {rollup_name}_groundtruth except select * from {rollup_name};';
     res = plpy.execute(sql)
     assert len(res)==0
-    sql = f'select * from {rollup_name} except select * from {rollup_name}_view;';
+    sql = f'select * from {rollup_name} except select * from {rollup_name}_groundtruth;';
     res = plpy.execute(sql)
     assert len(res)==0
 $$
@@ -87,8 +87,8 @@ RETURNS VOID AS $$
         # everything worked without error, so return
         return ret
 
-    wheres_list = re.split(r',\s*(?![^()]*\))', wheres)
-    distincts_list = re.split(r',\s*(?![^()]*\))', distincts)
+    wheres_list = pg_rollup._extract_arguments(wheres)
+    distincts_list = pg_rollup._extract_arguments(distincts)
 
     if len(wheres_list)==1 and wheres_list[0].strip()=='':
         wheres_list=[]

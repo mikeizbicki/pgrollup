@@ -29,7 +29,7 @@ select create_rollup(
         unnest(tsvector_to_array(to_tsvector(text))) AS tokens
     $$
 );
-NOTICE:  view "messages_rollup1_view" will be a temporary view
+NOTICE:  view "messages_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -45,7 +45,7 @@ select create_rollup(
         id_user
     $$
 );
-NOTICE:  view "messages_rollup2_view" will be a temporary view
+NOTICE:  view "messages_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -59,7 +59,7 @@ select create_rollup(
     $$
 );
 NOTICE:  relation "messages_index_distinct_id_user" already exists, skipping
-NOTICE:  view "messages_rollup3_view" will be a temporary view
+NOTICE:  view "messages_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

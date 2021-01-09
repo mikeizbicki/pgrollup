@@ -12,8 +12,26 @@ def _extract_arguments(s):
     ['a', '(b,c)']
     >>> _extract_arguments("a,((b,c),d)")
     ['a', '((b,c),d)']
+    >>> _extract_arguments("date_trunc('day', accessed_at) AS access_day, date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published")
+    ["date_trunc('day', accessed_at) AS access_day", " date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published"]
     '''
-    return re.split(r',\s*(?![^()]*\))', s)
+    #return re.split(r',\s*(?![^()]*\))', s)
+
+    ret = []
+    last_match_index = 0
+    num_paren = 0
+    for i,x in enumerate(s):
+        if x in '([{':
+            num_paren+=1
+        if x in ')]}':
+            num_paren-=1
+        if num_paren==0 and x==',':
+            ret.append(s[last_match_index:i].strip())
+            last_match_index=i+1
+
+    if s[last_match_index:].strip() != '':
+        ret.append(s[last_match_index:])
+    return ret
 
 
 def _add_namespace(s, namespace):
@@ -120,7 +138,8 @@ class Rollup:
     '''
     if self.use_num else ''
     )+
-    '''count INTEGER NOT NULL,'''
+    '''count INTEGER NOT NULL,
+    '''
     +
     (
     ''',
@@ -464,7 +483,7 @@ class Rollup:
         );
         '''
         return ('''
-        CREATE VIEW ''' + self.rollup + '''_view AS (
+        CREATE VIEW ''' + self.rollup + '''_groundtruth AS (
         SELECT'''
             +
             (
@@ -529,7 +548,7 @@ class Rollup:
             FROM (
                 SELECT 
                     '''+
-                    distinct.value + 
+                    distinct.value + ' AS distinct_' + distinct.name +
                     (
                     ''',
                     '''+
@@ -538,7 +557,9 @@ class Rollup:
                     if len(self.wheres)>0 else '')+
                 '''
                 FROM ''' + self.table + '''
-                WHERE TRUE ''' + ' '.join([' AND '+distinct.name+' IS NOT NULL' for distinct in self.distincts]) +
+                WHERE  '''+distinct.value+' IS NOT NULL' +
+                #WHERE  distinct_'''+distinct.name+' IS NOT NULL' +
+                #WHERE TRUE ''' + ' '.join([' AND distinct_'+distinct.name+' IS NOT NULL' for distinct in self.distincts]) +
                 ' GROUP BY ' + distinct.value +(
                 ',' + ','.join([key.name for key in self.wheres])
                 if len(self.wheres)>0 else '')+'''
@@ -600,7 +621,7 @@ class Rollup:
             if len(self.wheres)>0 else '') + '''
             )
         SELECT *
-        FROM ''' + self.rollup + '_view;')
+        FROM ''' + self.rollup + '_groundtruth;')
 
 
     def create(self):
