@@ -154,6 +154,20 @@ SELECT create_rollup(
     $$
 );
 
+SELECT create_rollup(
+    'metahtml',
+    'metahtml_rollup_links',
+    wheres => $$
+        jsonb_array_elements(jsonb->'links'->'best'->'value')->>'href' AS links,
+    $$,
+    distincts => $$
+        url,
+        url_hostpathquery_key(url) AS hostpathquery,
+        url_hostpath_key(url) AS hostpath,
+        url_host_key(url) AS hostpath,
+    $$
+);
+
 insert into metahtml (accessed_at, url, jsonb) values
     ('2020-01-01 00:00:00', 'https://google.com', '{}'),
     ('2020-01-01 00:00:00', 'https://google.com/search', '{}'),

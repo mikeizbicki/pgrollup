@@ -72,7 +72,7 @@ RETURNS VOID AS $$
                 plpy.error(f'invalid name for {error_str}: {k}, consider using the syntax: {k} AS column_name')
 
             # FIXME:
-            unnest = 'unnest' in value
+            unnest = 'unnest' in value or 'jsonb_array_elements' in value
 
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
@@ -82,7 +82,7 @@ RETURNS VOID AS $$
         names = [k.name for k in ret]
         duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
         if len(duplicate_names) > 0:
-            plpy.error(f'duplicate names in {error_str}: '+duplicate_names)
+            plpy.error(f'duplicate names in {error_str}: '+str(duplicate_names))
 
         # everything worked without error, so return
         return ret
