@@ -25,6 +25,19 @@ insert into arrtest (a,b,c,d) values
     (3, NULL              , 'foo', NULL              );
 select create_rollup(
     'arrtest',
+    'arrtest_rollup0',
+    wheres => $$
+        unnest(b)
+    $$
+);
+NOTICE:  view "arrtest_rollup0_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'arrtest',
     'arrtest_rollup1',
     wheres => $$
         unnest(array_uniq(b))
@@ -113,6 +126,12 @@ insert into arrtest (a,b,c,d) values
     (2, NULL              , 'baz', '{NULL,5,6      }'),
     (2, NULL              , 'foo', '{NULL,NULL     }'),
     (3, NULL              , 'foo', NULL              );
+select assert_rollup('arrtest_rollup0');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('arrtest_rollup1');
  assert_rollup 
 ---------------
