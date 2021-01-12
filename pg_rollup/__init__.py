@@ -272,9 +272,6 @@ class Rollup:
         RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
         BEGIN'''+'''
         '''.join([
-            #(('''
-            #IF TRUE ''' + ' '.join(['AND ' + _add_namespace(key.value,'new') + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest]) + ''' THEN'''
-            #) if self.null_support else '')+
             '''
                 INSERT INTO '''+self.rollup_table_name+''' ('''+
                     (
@@ -296,7 +293,7 @@ class Rollup:
                     '''.join([key.name for key in self.wheres])
                     if len(self.wheres)>0 else '' )+ '''
                     )
-                SELECT * FROM (SELECT'''+
+                SELECT * FROM (SELECT * FROM (SELECT'''+
                     (
                     '''
                     '''+
@@ -318,8 +315,10 @@ class Rollup:
                     '''+
                     ''',
                     '''.join([_add_namespace(key.value,'new') + ' AS '+key.name for key in self.wheres])
-                    if len(self.wheres)>0 else '') + '''
-                    ) t
+                    if len(self.wheres)>0 else '') + ('''
+                    GROUP BY '''+', '.join([key.name for key in self.wheres])
+                    if len(self.wheres)>0 else '')+'''
+                    ) s ) t
                     WHERE TRUE '''+
                     ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest])
                     ) if self.null_support else '')+'''
@@ -351,8 +350,6 @@ class Rollup:
                     '''
                     count = '''+self.rollup_table_name+'''.count + excluded.count;
             '''+
-            #('''END IF;
-            #'''
             (''
             if self.null_support else ''
             )

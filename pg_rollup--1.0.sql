@@ -87,12 +87,9 @@ RETURNS VOID AS $$
             if '?' in name:
                 plpy.error(f'invalid name for {error_str}: {k}, consider using the syntax: {k} AS column_name')
 
-            # FIXME:
-            unnest = False #'unnest' in value or 'jsonb_array_elements' in value
-
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
-            ret.append(pg_rollup.Key(value,type,name,unnest))
+            ret.append(pg_rollup.Key(value,type,name,False))
 
         # if there are any duplicate names, throw an error
         names = [k.name for k in ret]

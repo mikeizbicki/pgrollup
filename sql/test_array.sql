@@ -28,6 +28,14 @@ insert into arrtest (a,b,c,d) values
 
 select create_rollup(
     'arrtest',
+    'arrtest_rollup0',
+    wheres => $$
+        unnest(b)
+    $$
+);
+
+select create_rollup(
+    'arrtest',
     'arrtest_rollup1',
     wheres => $$
         unnest(array_uniq(b))
@@ -93,6 +101,7 @@ insert into arrtest (a,b,c,d) values
     (3, NULL              , 'foo', NULL              );
 
 
+select assert_rollup('arrtest_rollup0');
 select assert_rollup('arrtest_rollup1');
 select assert_rollup('arrtest_rollup2');
 select assert_rollup('arrtest_rollup3');
