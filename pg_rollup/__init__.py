@@ -272,10 +272,10 @@ class Rollup:
         RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
         BEGIN'''+'''
         '''.join([
-            (('''
-            IF TRUE ''' + ' '.join(['AND ' + _add_namespace(key.value,'new') + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest]) + ''' THEN'''
-            ) if self.null_support else '')
-            +'''
+            #(('''
+            #IF TRUE ''' + ' '.join(['AND ' + _add_namespace(key.value,'new') + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest]) + ''' THEN'''
+            #) if self.null_support else '')+
+            '''
                 INSERT INTO '''+self.rollup_table_name+''' ('''+
                     (
                     '''
@@ -296,7 +296,7 @@ class Rollup:
                     '''.join([key.name for key in self.wheres])
                     if len(self.wheres)>0 else '' )+ '''
                     )
-                VALUES ('''+
+                SELECT * FROM (SELECT'''+
                     (
                     '''
                     '''+
@@ -308,18 +308,21 @@ class Rollup:
                     '''
                     '''+
                     '''
-                    '''.join(['1,' for distinct in self.distincts])
+                    '''.join(['count(1),' for distinct in self.distincts])
                     if self.use_num else ''
                     )+
                     '''
-                    1'''+
+                    count(1)'''+
                     (
                     ''',
                     '''+
                     ''',
-                    '''.join([_add_namespace(key.value,'new') for key in self.wheres])
+                    '''.join([_add_namespace(key.value,'new') + ' AS '+key.name for key in self.wheres])
                     if len(self.wheres)>0 else '') + '''
-                    )
+                    ) t
+                    WHERE TRUE '''+
+                    ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest])
+                    ) if self.null_support else '')+'''
                 ON CONFLICT '''
                 ' (' + 
                 (','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.wheres)]) if len(self.wheres)>0 else 'raw_true'
@@ -348,8 +351,9 @@ class Rollup:
                     '''
                     count = '''+self.rollup_table_name+'''.count + excluded.count;
             '''+
-            ('''END IF;
-            '''
+            #('''END IF;
+            #'''
+            (''
             if self.null_support else ''
             )
             for binary in self.binaries])+
