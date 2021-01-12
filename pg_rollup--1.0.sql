@@ -1,6 +1,22 @@
 \echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
 
 
+CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
+SELECT ARRAY(SELECT DISTINCT unnest(a));
+$$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
+
+do $$
+BEGIN
+    assert( array_uniq('{}'::INT[]) = '{}');
+    assert( array_uniq('{1,1,1,1}'::INT[]) = '{1}');
+    assert( array_uniq('{1,1,2,3}'::INT[]) = '{1,2,3}');
+    assert( array_uniq('{1,2,3,1}'::INT[]) = '{1,2,3}');
+    assert( array_uniq('{NULL,NULL}'::INT[]) = '{NULL}');
+    assert( array_uniq(NULL::INT[]) IS NULL);
+END;
+$$;
+
+
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
     sql = f'select * from {rollup_name}_groundtruth except select * from {rollup_name};';
@@ -72,7 +88,7 @@ RETURNS VOID AS $$
                 plpy.error(f'invalid name for {error_str}: {k}, consider using the syntax: {k} AS column_name')
 
             # FIXME:
-            unnest = 'unnest' in value or 'jsonb_array_elements' in value
+            unnest = False #'unnest' in value or 'jsonb_array_elements' in value
 
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
@@ -114,11 +130,6 @@ LANGUAGE plpython3u
 RETURNS NULL ON NULL INPUT;
 
 
-/*
- * FIXME:
- * automatically deleting rollups is not currently working
- *
- 
 CREATE OR REPLACE FUNCTION drop_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
     import pg_rollup
@@ -127,5 +138,4 @@ RETURNS VOID AS $$
 $$
 LANGUAGE plpython3u
 RETURNS NULL ON NULL INPUT;
-*/
 

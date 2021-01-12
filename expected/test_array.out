@@ -1,0 +1,162 @@
+create or replace language plpython3u;
+create extension if not exists pg_rollup;
+create temporary table arrtest (
+    id serial primary key,
+    a int,
+    b int[],
+    c text,
+    d text[]
+);
+insert into arrtest (a,b,c,d) values
+    (0, '{              }', 'foo', '{1,2,3,4       }'),
+    (0, '{              }', 'foo', '{2,2,2         }'),
+    (0, '{1,2,3,4       }', 'bar', '{              }'),
+    (0, '{1,2,3,4       }', 'bar', '{NULL,NULL     }'),
+    (0, '{NULL          }', 'foo', '{NULL          }'),
+    (0, '{NULL          }', 'foo', '{NULL,5,6      }'),
+    (0, '{NULL,5,6      }', 'foo', '{1,2,3,4       }'),
+    (0, '{NULL,5,6      }', 'foo', NULL              ),
+    (0, '{NULL,NULL     }', 'foo', '{              }'),
+    (0, '{NULL,NULL     }', 'foo', '{2,2,2         }'),
+    (1, '{2,2,2         }', 'foo', '{NULL          }'),
+    (1, '{2,2,2         }', 'baz', NULL              ),
+    (2, NULL              , 'baz', '{NULL,5,6      }'),
+    (2, NULL              , 'foo', '{NULL,NULL     }'),
+    (3, NULL              , 'foo', NULL              );
+select create_rollup(
+    'arrtest',
+    'arrtest_rollup1',
+    wheres => $$
+        unnest(array_uniq(b))
+    $$
+);
+NOTICE:  view "arrtest_rollup1_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'arrtest',
+    'arrtest_rollup2',
+    wheres => $$
+        unnest(array_uniq(d))
+    $$
+);
+NOTICE:  view "arrtest_rollup2_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'arrtest',
+    'arrtest_rollup3',
+    wheres => $$
+        unnest(array_uniq(b)) AS b,
+        unnest(array_uniq(d)) AS d
+    $$
+);
+NOTICE:  view "arrtest_rollup3_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'arrtest',
+    'arrtest_rollup4',
+    wheres => $$
+        a,
+        unnest(array_uniq(b)) AS b,
+        unnest(array_uniq(d)) AS d,
+        c
+    $$
+);
+NOTICE:  view "arrtest_rollup4_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'arrtest',
+    'arrtest_rollup5',
+    wheres => $$
+        unnest(array_uniq(b)) AS b,
+        unnest(array_uniq(d)) AS d
+    $$,
+    distincts => $$
+        a,
+        c
+    $$
+);
+NOTICE:  view "arrtest_rollup5_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+insert into arrtest (a,b,c,d) values
+    (0, '{              }', 'foo', '{1,2,3,4       }'),
+    (0, '{              }', 'foo', '{2,2,2         }'),
+    (0, '{1,2,3,4       }', 'bar', '{              }'),
+    (0, '{1,2,3,4       }', 'bar', '{NULL,NULL     }'),
+    (0, '{NULL          }', 'foo', '{NULL          }'),
+    (0, '{NULL          }', 'foo', '{NULL,5,6      }'),
+    (0, '{NULL,5,6      }', 'foo', '{1,2,3,4       }'),
+    (0, '{NULL,5,6      }', 'foo', NULL              ),
+    (0, '{NULL,NULL     }', 'foo', '{              }'),
+    (0, '{NULL,NULL     }', 'foo', '{2,2,2         }'),
+    (1, '{2,2,2         }', 'foo', '{NULL          }'),
+    (1, '{2,2,2         }', 'baz', NULL              ),
+    (2, NULL              , 'baz', '{NULL,5,6      }'),
+    (2, NULL              , 'foo', '{NULL,NULL     }'),
+    (3, NULL              , 'foo', NULL              );
+select assert_rollup('arrtest_rollup1');
+ERROR:  AssertionError: 
+CONTEXT:  Traceback (most recent call last):
+  PL/Python function "assert_rollup", line 4, in <module>
+    assert len(res)==0
+PL/Python function "assert_rollup"
+select assert_rollup('arrtest_rollup2');
+ERROR:  AssertionError: 
+CONTEXT:  Traceback (most recent call last):
+  PL/Python function "assert_rollup", line 4, in <module>
+    assert len(res)==0
+PL/Python function "assert_rollup"
+select assert_rollup('arrtest_rollup3');
+ERROR:  AssertionError: 
+CONTEXT:  Traceback (most recent call last):
+  PL/Python function "assert_rollup", line 4, in <module>
+    assert len(res)==0
+PL/Python function "assert_rollup"
+select assert_rollup('arrtest_rollup4');
+ERROR:  AssertionError: 
+CONTEXT:  Traceback (most recent call last):
+  PL/Python function "assert_rollup", line 4, in <module>
+    assert len(res)==0
+PL/Python function "assert_rollup"
+select assert_rollup('arrtest_rollup5');
+ERROR:  AssertionError: 
+CONTEXT:  Traceback (most recent call last):
+  PL/Python function "assert_rollup", line 4, in <module>
+    assert len(res)==0
+PL/Python function "assert_rollup"
+/*
+select distinct unnest(b) from arrtest;
+
+
+CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
+SELECT ARRAY(SELECT DISTINCT unnest(a));
+$$ LANGUAGE 'sql' STRICT IMMUTABLE;
+
+SELECT ARRAY(
+  SELECT DISTINCT e
+  FROM ( VALUES
+    ('foo', 'bar', 'foo', 'baz' )
+  ) AS t(a,b,c,d)
+  CROSS JOIN LATERAL unnest(ARRAY[a,b,c,d]) AS a(e)
+  -- ORDER BY e; -- if you want it sorted
+);
+*/

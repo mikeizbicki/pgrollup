@@ -164,7 +164,7 @@ SELECT create_rollup(
         url,
         url_hostpathquery_key(url) AS hostpathquery,
         url_hostpath_key(url) AS hostpath,
-        url_host_key(url) AS hostpath,
+        url_host_key(url) AS host,
     $$
 );
 

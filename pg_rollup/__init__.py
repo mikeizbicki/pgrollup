@@ -267,11 +267,11 @@ class Rollup:
             FOR EACH ROW
             EXECUTE PROCEDURE metahtml.metahtml_rollup_host_insert_f();
         '''
-        return '''
-        '''.join(['''
-        CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_insert_f_'''+binary+'''()
+        return ('''
+        CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_insert_f()
         RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN'''+
+        BEGIN'''+'''
+        '''.join([
             (('''
             IF TRUE ''' + ' '.join(['AND ' + _add_namespace(key.value,'new') + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest]) + ''' THEN'''
             ) if self.null_support else '')
@@ -352,18 +352,18 @@ class Rollup:
             '''
             if self.null_support else ''
             )
-            +'''
+            for binary in self.binaries])+
+            '''
             RETURN NEW;
         END;
         $$;
 
-        CREATE TRIGGER '''+self.rollup_name+'''_insert_t_'''+binary+'''
+        CREATE TRIGGER '''+self.rollup_name+'''_insert_t_
             BEFORE INSERT 
             ON ''' + self.table + '''
             FOR EACH ROW
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_insert_f_'''+binary+'''();
-        '''
-        for binary in self.binaries])
+            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_insert_f();
+        ''')
             
 
     def create_trigger_update(self):
@@ -646,7 +646,7 @@ def drop_rollup_str(rollup):
     rollup_table_name = rollup+'_raw'
     return ('''
     DROP TABLE '''+rollup_table_name+''' CASCADE;
-    DROP VIEW '''+rollup+'''_view CASCADE;
+    DROP VIEW '''+rollup+'''_groundtruth CASCADE;
     DROP FUNCTION '''+rollup_table_name+'''_insert_f CASCADE;
     DROP FUNCTION '''+rollup_table_name+'''_update_f CASCADE;
     DROP FUNCTION '''+rollup_table_name+'''_delete_f CASCADE;

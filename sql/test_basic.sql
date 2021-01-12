@@ -100,3 +100,8 @@ select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup2');
 select assert_rollup('test_rollup3');
 select assert_rollup('test_rollup4');
+
+select drop_rollup('test_rollup1');
+select drop_rollup('test_rollup2');
+select drop_rollup('test_rollup3');
+select drop_rollup('test_rollup4');
