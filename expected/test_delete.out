@@ -61,33 +61,6 @@ NOTICE:  view "test_rollup2_groundtruth" will be a temporary view
  
 (1 row)
 
-select create_rollup(
-    'test',
-    'test_rollup3',
-    wheres => 'name',
-    distincts => 'num'
-);
-NOTICE:  view "test_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup3" will be a temporary view
-NOTICE:  view "test_rollup3_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
-
-select create_rollup(
-    'test',
-    'test_rollup4',
-    distincts => 'name,num'
-);
-NOTICE:  view "test_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup4" will be a temporary view
-NOTICE:  view "test_rollup4_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup1');
  assert_rollup 
 ---------------
@@ -95,18 +68,6 @@ select assert_rollup('test_rollup1');
 (1 row)
 
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup4');
  assert_rollup 
 ---------------
  
@@ -151,59 +112,56 @@ select assert_rollup('test_rollup2');
  
 (1 row)
 
-select assert_rollup('test_rollup3');
+delete from test where name='alice';
+delete from test where name is null and num is null;
+select assert_rollup('test_rollup1');
  assert_rollup 
 ---------------
  
 (1 row)
 
-select assert_rollup('test_rollup4');
+select assert_rollup('test_rollup2');
  assert_rollup 
 ---------------
  
 (1 row)
 
-select drop_rollup('test_rollup1');
-NOTICE:  drop cascades to view test_rollup1
-NOTICE:  drop cascades to 3 other objects
-DETAIL:  drop cascades to trigger test_rollup1_insert on table test
-drop cascades to trigger test_rollup1_update on table test
-drop cascades to trigger test_rollup1_delete on table test
- drop_rollup 
--------------
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
+select assert_rollup('test_rollup1');
+ assert_rollup 
+---------------
  
 (1 row)
 
-select drop_rollup('test_rollup2');
-NOTICE:  drop cascades to view test_rollup2
-NOTICE:  drop cascades to 3 other objects
-DETAIL:  drop cascades to trigger test_rollup2_insert on table test
-drop cascades to trigger test_rollup2_update on table test
-drop cascades to trigger test_rollup2_delete on table test
- drop_rollup 
--------------
- 
-(1 row)
-
-select drop_rollup('test_rollup3');
-NOTICE:  drop cascades to view test_rollup3
-NOTICE:  drop cascades to 3 other objects
-DETAIL:  drop cascades to trigger test_rollup3_insert on table test
-drop cascades to trigger test_rollup3_update on table test
-drop cascades to trigger test_rollup3_delete on table test
- drop_rollup 
--------------
- 
-(1 row)
-
-select drop_rollup('test_rollup4');
-NOTICE:  drop cascades to view test_rollup4
-NOTICE:  drop cascades to 3 other objects
-DETAIL:  drop cascades to trigger test_rollup4_insert on table test
-drop cascades to trigger test_rollup4_update on table test
-drop cascades to trigger test_rollup4_delete on table test
- drop_rollup 
--------------
+select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
  
 (1 row)
 

@@ -1,4 +1,5 @@
 create or replace language plpython3u;
+create extension if not exists hll;
 create extension if not exists pg_rollup;
 create temporary table arrtest (
     id serial primary key,
@@ -30,6 +31,8 @@ select create_rollup(
         unnest(b)
     $$
 );
+NOTICE:  view "arrtest_rollup0_groundtruth_raw" will be a temporary view
+NOTICE:  view "arrtest_rollup0" will be a temporary view
 NOTICE:  view "arrtest_rollup0_groundtruth" will be a temporary view
  create_rollup 
 ---------------
@@ -43,6 +46,8 @@ select create_rollup(
         unnest(array_uniq(b))
     $$
 );
+NOTICE:  view "arrtest_rollup1_groundtruth_raw" will be a temporary view
+NOTICE:  view "arrtest_rollup1" will be a temporary view
 NOTICE:  view "arrtest_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
@@ -56,6 +61,8 @@ select create_rollup(
         unnest(array_uniq(d))
     $$
 );
+NOTICE:  view "arrtest_rollup2_groundtruth_raw" will be a temporary view
+NOTICE:  view "arrtest_rollup2" will be a temporary view
 NOTICE:  view "arrtest_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
@@ -70,6 +77,8 @@ select create_rollup(
         unnest(array_uniq(d)) AS d
     $$
 );
+NOTICE:  view "arrtest_rollup3_groundtruth_raw" will be a temporary view
+NOTICE:  view "arrtest_rollup3" will be a temporary view
 NOTICE:  view "arrtest_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
@@ -86,6 +95,8 @@ select create_rollup(
         c
     $$
 );
+NOTICE:  view "arrtest_rollup4_groundtruth_raw" will be a temporary view
+NOTICE:  view "arrtest_rollup4" will be a temporary view
 NOTICE:  view "arrtest_rollup4_groundtruth" will be a temporary view
  create_rollup 
 ---------------
@@ -104,6 +115,8 @@ select create_rollup(
         c
     $$
 );
+NOTICE:  view "arrtest_rollup5_groundtruth_raw" will be a temporary view
+NOTICE:  view "arrtest_rollup5" will be a temporary view
 NOTICE:  view "arrtest_rollup5_groundtruth" will be a temporary view
  create_rollup 
 ---------------

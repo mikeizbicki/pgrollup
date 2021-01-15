@@ -107,9 +107,6 @@ SELECT create_rollup(
         url_hostpath_key(url) AS hostpath
     $$
 );
-NOTICE:  relation "metahtml_index_distinct_url" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpathquery" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpath" already exists, skipping
  create_rollup 
 ---------------
  
@@ -127,9 +124,6 @@ SELECT create_rollup(
         url_hostpath_key(url) AS hostpath
     $$
 );
-NOTICE:  relation "metahtml_index_distinct_url" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpathquery" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpath" already exists, skipping
  create_rollup 
 ---------------
  
@@ -147,9 +141,6 @@ SELECT create_rollup(
         url_hostpath_key(url) AS hostpath
     $$
 );
-NOTICE:  relation "metahtml_index_distinct_url" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpathquery" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpath" already exists, skipping
  create_rollup 
 ---------------
  
@@ -168,9 +159,6 @@ SELECT create_rollup(
         url_hostpath_key(url) AS hostpath
     $$
 );
-NOTICE:  relation "metahtml_index_distinct_url" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpathquery" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpath" already exists, skipping
  create_rollup 
 ---------------
  
@@ -189,9 +177,6 @@ SELECT create_rollup(
         url_host_key(url) AS host,
     $$
 );
-NOTICE:  relation "metahtml_index_distinct_url" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpathquery" already exists, skipping
-NOTICE:  relation "metahtml_index_distinct_hostpath" already exists, skipping
  create_rollup 
 ---------------
  

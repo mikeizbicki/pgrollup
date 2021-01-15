@@ -1,6 +1,20 @@
 \echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
 
 
+CREATE OR REPLACE FUNCTION hll_hash_anynull(a anyelement) RETURNS hll_hashval AS $$
+    SELECT COALESCE(hll_hash_any(a), 0::hll_hashval);
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+
+do $$
+BEGIN
+    assert( hll_hash_anynull(null::integer) = 0::hll_hashval);
+    assert( hll_hash_anynull(null::text) = 0::hll_hashval);
+    assert( hll_hash_anynull(123) = hll_hash_any(123));
+    assert( hll_hash_anynull('123'::text) = hll_hash_any('123'::text));
+END;
+$$;
+
+
 CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
 SELECT ARRAY(SELECT DISTINCT unnest(a));
 $$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
@@ -16,6 +30,35 @@ BEGIN
 END;
 $$;
 
+
+CREATE TABLE pg_rollups (
+    id SERIAL PRIMARY KEY,
+    table_name REGCLASS NOT NULL,
+    rollup_name REGCLASS NOT NULL UNIQUE,
+    proc_insert REGPROC NOT NULL,
+    proc_update REGPROC NOT NULL,
+    proc_delete REGPROC NOT NULL,
+    CONSTRAINT table_rollup UNIQUE(table_name,rollup_name)
+);
+
+/*
+CREATE OR REPLACE FUNCTION public.test_rollup1_raw_delete_f()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+        BEGIN
+            RAISE EXCEPTION 'cannot delete from tables with distinct rollup constraints';
+        RETURN NEW;
+        END;
+        $function$
+
+
+CREATE TRIGGER metahtml_rollup_host_insert_t
+    BEFORE INSERT 
+    ON metahtml.metahtml
+    FOR EACH ROW
+    EXECUTE PROCEDURE metahtml.metahtml_rollup_host_insert_f();
+*/
 
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
@@ -89,7 +132,7 @@ RETURNS VOID AS $$
 
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
-            ret.append(pg_rollup.Key(value,type,name,False))
+            ret.append(pg_rollup.Key(value,type,name,'hll'))
 
         # if there are any duplicate names, throw an error
         names = [k.name for k in ret]
@@ -108,10 +151,15 @@ RETURNS VOID AS $$
     if len(distincts_list)==1 and distincts_list[0].strip()=='':
         distincts_list=[]
 
+    # check if the table is temporary
+    sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
+    is_temp = plpy.execute(sql)[0]['is_temp']
+
     # constuct the sql statements for generating the rollup, and execute them
     # the error checking above should guarantee that there are no SQL errors below
     sqls = pg_rollup.Rollup(
         table_name,
+        is_temp,
         [],
         rollup_name,
         process_list(wheres_list, 'key'),

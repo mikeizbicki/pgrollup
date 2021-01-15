@@ -1,7 +1,40 @@
 import collections
 import re
 
-Key = collections.namedtuple('Key', ['value','type','name','unnest'])
+Key = collections.namedtuple('Key', ['value','type','name','algebra'])
+
+
+Algebra = collections.namedtuple('Algebra', ['view','agg','hom','type','zero','plus','negate'])
+
+algebras = {
+    'count' : Algebra(
+        agg= lambda x:'count(1)',
+        hom = lambda x: '1',
+        type = lambda x: 'INTEGER',
+        zero = '0',
+        plus = lambda x,y: x+'+'+y,
+        view = lambda x: x,
+        negate = '-',
+        ),
+    'sum' : Algebra(
+        agg=lambda x: 'sum(x)',
+        hom = lambda x: x,
+        type = lambda x: x,
+        zero = '0',
+        plus = lambda x,y: x+'+'+y,
+        view = lambda x: x,
+        negate = '-',
+        ),
+    'hll' : Algebra(
+        agg=lambda x:'hll_add_agg('+x+')',
+        hom=lambda x:'hll_hash_anynull('+x+')',
+        type = lambda x: 'hll',
+        zero='hll_empty()',
+        plus= lambda x,y: x+' || '+y,
+        view= lambda x: 'floor(hll_cardinality('+x+'))',
+        negate=None,
+        ),
+    }
 
 
 def _extract_arguments(s):
@@ -74,16 +107,16 @@ def _add_namespace(s, namespace):
 
 class Rollup:
 
-    def __init__(self, table, columns, rollup, wheres, distincts):
+    def __init__(self, table, temporary, columns, rollup, wheres, distincts):
+        self.temporary = temporary
         self.table = table
         self.columns = columns
         self.rollup = rollup
-        self.distincts = distincts
-        self.use_hll = False
-        self.use_num = True
+        self.use_hll = True
         self.null_support = True
 
-        self.wheres = [Key(k.value, k.type, 'where_'+k.name,k.unnest) for k in wheres]
+        self.wheres = [Key(k.value, k.type, 'where_'+k.name,None) for k in wheres]
+        self.distincts = [Key(k.value, k.type, k.name,algebras[k.algebra]) for k in distincts]
 
         if '.' in table:
             self.schema_name, self.table_name = table.split('.')
@@ -100,16 +133,15 @@ class Rollup:
 
         if len(distincts) == 0:
             self.use_hll = False
-            self.use_num = False
 
         def generate_binary(wheres, ls):
             if len(wheres)==0:
                 return [ l[1:] for l in ls ]
             else:
-                if wheres[0].unnest:
-                    return generate_binary(wheres[1:], [l + '1' for l in ls])
-                else:
-                    return generate_binary(wheres[1:], [l + '0' for l in ls] + [l + '1' for l in ls])
+                #if wheres[0].unnest:
+                    #return generate_binary(wheres[1:], [l + '1' for l in ls])
+                #else:
+                return generate_binary(wheres[1:], [l + '0' for l in ls] + [l + '1' for l in ls])
         self.binaries = generate_binary(wheres,' ')
 
 
@@ -124,19 +156,14 @@ class Rollup:
             where_language text
         );
         '''
+        temp_str = 'TEMPORARY ' if self.temporary else ''
         return (
-'''CREATE TABLE '''+self.rollup_table_name+''' ('''+
+f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
     (
     '''
-    '''.join([distinct.name + '_hll hll NOT NULL,' for distinct in self.distincts])+'''
+    '''.join(['distinct_'+distinct.name + ' '+distinct.algebra.type(distinct.type) +' NOT NULL,' for distinct in self.distincts])+'''
     '''
     if self.use_hll else ''
-    )+
-    (
-    ''.join(['''
-    '''+'distinct_'+distinct.name + ' INTEGER NOT NULL,' for distinct in self.distincts])+'''
-    '''
-    if self.use_num else ''
     )+
     '''count INTEGER NOT NULL,
     '''
@@ -161,78 +188,13 @@ class Rollup:
             return ''
 
 
-    def create_indexes_hll(self):
-        '''
-        -- indexes ensure fast calculation of the max on each column
-        CREATE INDEX metahtml_rollup_host_index_hll ON metahtml.metahtml_rollup_host_raw (hll_cardinality(hll));
-        CREATE INDEX metahtml_rollup_host_index_num ON metahtml.metahtml_rollup_host_raw (count);
-
-        '''
-        return (''.join(['''
-        CREATE INDEX '''+self.rollup_name+'_index_'+distinct.name+'_hll ON '+self.rollup_table_name+' (hll_cardinality('+distinct.name+'_hll));' for distinct in self.distincts
-        ]) if self.use_hll else '')
-
-
-    def create_indexes_num(self):
-        return (''.join(['''
-        CREATE INDEX '''+self.rollup_name+'_index_'+'distinct_'+distinct.name+' ON '+self.rollup_table_name+' ('+'distinct_'+distinct.name+');' for distinct in self.distincts
-        ]) if self.use_num else '')
-
-
-    def create_indexes_int(self):
+    def create_indexes_wheres(self):
         if len(self.wheres)>0:
             return '''
             CREATE INDEX '''+self.rollup_name+'_index_num ON '+self.rollup_table_name+' ('+','.join([key.name for key in self.wheres])+''');
             '''
         else:
             return ''
-
-    def create_index(self):
-        return ''.join(['''
-        CREATE INDEX IF NOT EXISTS ''' + self.table_name + '''_index_distinct_'''+distinct.name+'''
-        ON ''' + self.table + ' ( ' + distinct.value + ' ); '
-        for distinct in self.distincts
-        ]) if self.use_num else ''
-
-
-
-    def create_view(self):
-        '''
-        -- the view simplifies presentation of the hll columns
-        CREATE VIEW metahtml.metahtml_rollup_host AS
-        SELECT
-            hll_cardinality(hll) AS num_distinct_url,
-            count,
-            host
-        FROM metahtml.metahtml_rollup_host_raw;
-        '''
-        return ('''
-        CREATE VIEW '''+self.rollup+''' AS
-        SELECT'''+
-            (
-            '''
-            '''+
-            '''
-            '''.join(['floor(hll_cardinality('+distinct.name+'_hll)) AS '+distinct.name+'_distinct,' for distinct in self.distincts])
-            if self.use_hll else ''
-            )+
-            (
-            '''
-            '''+
-            '''
-            '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
-            if self.use_num else ''
-            )+
-            '''
-            count'''+
-            (
-            ''',
-            '''+
-            ''',
-            '''.join([key.name for key in self.wheres])
-            if len(self.wheres)>0 else '' )+
-            '''
-        FROM '''+self.rollup_table_name+';')
 
 
     def create_trigger_insert(self):
@@ -270,19 +232,18 @@ class Rollup:
         return ('''
         CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_insert_f()
         RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN'''+'''
+        BEGIN
+            IF TG_OP='UPDATE' OR TG_OP='DELETE' OR TG_OP='TRUNCATE' THEN
+                RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup', TG_OP;
+            END IF;
+        '''+'''
         '''.join([
             '''
                 INSERT INTO '''+self.rollup_table_name+''' ('''+
                     (
                     '''
-                    '''.join([distinct.name+'_hll,' for distinct in self.distincts])
-                    if self.use_hll else ''
-                    )+
-                    (
-                    '''
                     '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
-                    if self.use_num else ''
+                    if self.use_hll else ''
                     )+
                     '''
                     count'''+
@@ -298,15 +259,13 @@ class Rollup:
                     '''
                     '''+
                     '''
-                    '''.join(['hll_add(hll_empty(), hll_hash_'+distinct.type+'('+_add_namespace(distinct.value,'new')+')),' for distinct in self.distincts])
+                    '''.join([
+                        distinct.algebra.plus(
+                            distinct.algebra.zero,
+                            distinct.algebra.hom(_add_namespace(distinct.value,'new'))
+                            )+',' for distinct in self.distincts
+                        ])
                     if self.use_hll else ''
-                    )+
-                    (
-                    '''
-                    '''+
-                    '''
-                    '''.join(['count(1),' for distinct in self.distincts])
-                    if self.use_num else ''
                     )+
                     '''
                     count(1)'''+
@@ -320,7 +279,7 @@ class Rollup:
                     if len(self.wheres)>0 else '')+'''
                     ) s ) t
                     WHERE TRUE '''+
-                    ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres) if not key.unnest])
+                    ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres)])
                     ) if self.null_support else '')+'''
                 ON CONFLICT '''
                 ' (' + 
@@ -332,20 +291,17 @@ class Rollup:
                     (
                     '''
                     '''+
+                    #'''
+                    #'''.join([distinct.name+'_hll = '+self.rollup_table_name+'.'+distinct.name+'_hll || excluded.'+distinct.name+'_hll,' for distinct in self.distincts])
                     '''
-                    '''.join([distinct.name+'_hll = '+self.rollup_table_name+'.'+distinct.name+'_hll || excluded.'+distinct.name+'_hll,' for distinct in self.distincts])
+                    '''.join([
+                        'distinct_'+distinct.name+' = '+distinct.algebra.plus(
+                            self.rollup_table_name+'.distinct_'+distinct.name,
+                            'excluded.distinct_'+distinct.name+',' 
+                            )
+                        for distinct in self.distincts
+                        ])
                     if self.use_hll else ''
-                    )+
-                    (
-                    '''
-                    '''+
-                    '''
-                    '''.join(['distinct_'+distinct.name+' = '+self.rollup_table_name+'.'+'distinct_'+distinct.name+''' + 
-                        CASE WHEN exists(SELECT 1 FROM '''+self.table+' WHERE '+distinct.value+'='+_add_namespace(distinct.value,'new')+''' OR ('''+distinct.value+' is null and '+_add_namespace(distinct.value,'new')+' is null)'+'''LIMIT 1)
-                            THEN 0
-                            ELSE 1
-                        END,''' for distinct in self.distincts])
-                    if self.use_num else ''
                     )+
                     '''
                     count = '''+self.rollup_table_name+'''.count + excluded.count;
@@ -359,163 +315,139 @@ class Rollup:
         END;
         $$;
 
-        CREATE TRIGGER '''+self.rollup_name+'''_insert_t_
-            BEFORE INSERT 
+        CREATE TRIGGER '''+self.rollup_name+'''
+            BEFORE INSERT OR UPDATE OR DELETE
             ON ''' + self.table + '''
             FOR EACH ROW
             EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_insert_f();
         ''')
-            
 
-    def create_trigger_update(self):
-        '''
-        -- an update trigger ensures that updates do not affect the distinct columns
-        CREATE OR REPLACE FUNCTION metahtml.metahtml_rollup_host_update_f()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN
-            IF new.url != metahtml.url THEN
-                RAISE EXCEPTION 'cannot update the "url" column due to distinct rollup';
-            END IF;
-        RETURN NEW;
-        END;
-        $$;
 
-        CREATE TRIGGER metahtml_rollup_host_update_t
-            BEFORE UPDATE
-            ON metahtml.metahtml
-            FOR EACH ROW
-            EXECUTE PROCEDURE metahtml.metahtml_rollup_host_update_f();
+    def create_trigger(self):
         '''
-        return ('''
-        CREATE OR REPLACE FUNCTION ''' + self.rollup_table_name + '''_update_f()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN'''+
+        '''
+        def make_insert(inverse):
+            return '''
+        '''.join([
             '''
-            '''.join(['''
-            IF '''+_add_namespace(distinct.value,'new')+''' != '''+_add_namespace(distinct.value,self.table_name)+''' THEN
-                RAISE EXCEPTION 'update would cause the value of "'''+distinct.value+'''" to change, but it is a distinct constraint on a rollup table';
-            END IF;'''
-            for distinct in self.distincts
-            ])+'''
-        RETURN NEW;
-        END;
-        $$;
-
-        CREATE TRIGGER '''+self.rollup_name+'''_update_t
-            BEFORE UPDATE
-            ON ''' + self.table + '''
-            FOR EACH ROW
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_update_f();
-        ''')
-
-
-    def create_trigger_delete(self):
-        '''
-        -- a delete trigger ensures that deletes never occur
-        CREATE OR REPLACE FUNCTION metahtml.metahtml_rollup_host_delete_f()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN
-            RAISE EXCEPTION 'cannot delete from metahtml.metahtml due to distinct rollup';
-        RETURN NEW;
-        END;
-        $$;
-
-        CREATE TRIGGER metahtml_rollup_host_delete_t
-            BEFORE DELETE
-            ON metahtml.metahtml
-            FOR EACH ROW
-            EXECUTE PROCEDURE metahtml.metahtml_rollup_host_delete_f();
-        '''
-        return ('''
-        CREATE OR REPLACE FUNCTION ''' + self.rollup_table_name + '''_delete_f()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN
-            RAISE EXCEPTION 'cannot delete from tables with distinct rollup constraints';
-        RETURN NEW;
-        END;
-        $$;
-
-        CREATE TRIGGER '''+self.rollup_name+'''_delete_t
-            BEFORE DELETE
-            ON ''' + self.table + '''
-            FOR EACH ROW
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_delete_f();
-        ''')
-
-
-    def create_view_groundtruth(self):
-        '''
-        CREATE VIEW metahtml.metahtml_rollop1_view AS (
-            SELECT
-                url_num,
-                count,
-                from_t.host,
-                from_t.access_day
-            FROM (
-                SELECT
-                    count(1) as count,
-                    metahtml.url_host(url) AS host,
-                    date_trunc('day',accessed_at) AS access_day
-                FROM metahtml.metahtml
-                WHERE
-                    metahtml.url_host(url) IS NOT NULL AND
-                    date_trunc('day',accessed_at) IS NOT NULL
-                    --metahtml.url_host(url) IS NOT NULL AND
-                    --date_trunc('day',accessed_at) IS NOT NULL
-                GROUP BY host,access_day
-            ) as from_t
-            INNER JOIN (
-                SELECT 
-                    count(1) as url_num,
-                    host,
-                    access_day
-                FROM (
-                    SELECT --DISTINCT ON (metahtml.url)
-                        metahtml.url,
-                        metahtml.url_host(url) as host,
-                        date_trunc('day',accessed_at) AS access_day
-                    FROM metahtml.metahtml
-                    GROUP BY metahtml.url, host, access_day
-                ) as t1
-                GROUP BY host, access_day
-            ) as inner_join1 ON 
-                from_t.host=inner_join1.host AND
-                from_t.access_day=inner_join1.access_day
-        );
-        '''
-        return ('''
-        CREATE VIEW ''' + self.rollup + '''_groundtruth AS (
-        SELECT'''
+            INSERT INTO '''+self.rollup_table_name+''' ('''+
+                (
+                '''
+                '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
+                if self.use_hll else ''
+                )+
+                '''
+                count'''+
+                (
+                ''',
+                '''+
+                ''',
+                '''.join([key.name for key in self.wheres])
+                if len(self.wheres)>0 else '' )+ '''
+                )
+            SELECT '''
+            + '''
+            '''.join([
+                (distinct.algebra.negate if inverse else '')+' distinct_'+distinct.name+','
+                for distinct in self.distincts
+            ])
             +
-            (
             '''
-            '''+
+            '''+('-' if inverse else '')+'''count
             '''
-            '''.join([distinct.name+'_hll,' for distinct in self.distincts])
-            if self.use_hll else ''
-            )+
-            (
+            + ''.join([''',
+                '''+key.name for key in self.wheres])+'''
+            FROM ( ''' + self.create_groundtruth('old_table' if inverse else 'new_table') + ''' ) t
+                WHERE TRUE '''+
+                ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres)])
+                ) if self.null_support else '')+'''
+            ON CONFLICT '''
+            ' (' + 
+            (','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.wheres)]) if len(self.wheres)>0 else 'raw_true'
+            )+') WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.wheres) if i=='0' ])
+            +
             '''
-            '''+
-            '''
-            '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
-            if self.use_num else ''
-            )+
-            '''
-            count'''+
-            (
-            ''',
-            '''+
-            ''',
-            '''.join(['from_t.'+key.name for key in self.wheres])
-            if len(self.wheres)>0 else '') + '''
-        FROM (
-            SELECT'''+
+            DO UPDATE SET'''+
                 (
                 '''
                 '''+
                 '''
-                '''.join(['hll_add_agg(hll_hash_'+distinct.type+'('+distinct.value+')) AS '+distinct.name+'_hll,' for distinct in self.distincts])
+                '''.join([
+                    'distinct_'+distinct.name+' = '+distinct.algebra.plus(
+                        self.rollup_table_name+'.distinct_'+distinct.name,
+                        'excluded.distinct_'+distinct.name+',' 
+                        )
+                    for distinct in self.distincts
+                    ])
+                if self.use_hll else ''
+                )+
+                '''
+                count = '''+self.rollup_table_name+'''.count + excluded.count;
+        '''+
+        (''
+        if self.null_support else ''
+        )
+        for binary in self.binaries])
+
+        return ('''
+        CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_triggerfunc()
+        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+        BEGIN
+        /*
+        IF TG_OP='UPDATE' OR TG_OP='DELETE' OR TG_OP='TRUNCATE' THEN
+            RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup', TG_OP;
+        END IF;
+        */
+
+        IF TG_OP='UPDATE' OR TG_OP='INSERT' THEN'''+make_insert(False)+'''
+        END IF;
+        IF TG_OP='UPDATE' OR TG_OP='DELETE' THEN'''+
+        ( make_insert(True) if all([distinct.algebra.negate for distinct in self.distincts]) else '''
+            RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([distinct.algebra.agg for distinct in self.distincts if not distinct.algebra.negate])+ '''', TG_OP;
+        '''
+        )+'''
+        END IF;
+        RETURN NEW;
+        END;
+        $$;
+
+        CREATE TRIGGER '''+self.rollup_name+'''_insert
+            AFTER INSERT
+            ON ''' + self.table + '''
+            REFERENCING NEW TABLE AS new_table
+            FOR EACH STATEMENT
+            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_triggerfunc();
+
+        CREATE TRIGGER '''+self.rollup_name+'''_update
+            AFTER UPDATE
+            ON ''' + self.table + '''
+            REFERENCING NEW TABLE AS new_table
+                        OLD TABLE AS old_table
+            FOR EACH STATEMENT
+            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_triggerfunc();
+
+        CREATE TRIGGER '''+self.rollup_name+'''_delete
+            AFTER DELETE
+            ON ''' + self.table + '''
+            REFERENCING OLD TABLE AS old_table
+            FOR EACH STATEMENT
+            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_triggerfunc();
+            ''')
+
+
+    def create_groundtruth(self, source):
+        return (
+            'SELECT'+
+                (
+                '''
+                '''+
+                '''
+                '''.join([
+                    distinct.algebra.agg(
+                        distinct.algebra.hom(distinct.value)
+                        )+' AS distinct_'+distinct.name+','
+                    for distinct in self.distincts
+                    ])
                 if self.use_hll else ''
                 )+
                 '''
@@ -527,60 +459,71 @@ class Rollup:
                 '''.join([key.value + ' AS ' + key.name for key in self.wheres])
                 if len(self.wheres)>0 else '') +
                 '''
-            FROM ''' + self.table +
+            FROM ''' + source +
             (
                 '''
             GROUP BY ''' + ','.join([key.name for key in self.wheres])
-            if len(self.wheres)>0 else '')+'''
-        ) AS from_t'''+
-        (
-        ''.join([
+            if len(self.wheres)>0 else ''
+            )
+        )
+
+
+    def create_view_groundtruth(self):
         '''
-        INNER JOIN (
-            SELECT 
-                count(1) AS ''' + 'distinct_'+distinct.name + 
-                (
-                ''',
-                '''+
-                ''',
-                '''.join([key.name for key in self.wheres])
-                if len(self.wheres)>0 else '')+
-            '''
-            FROM (
-                SELECT 
-                    '''+
-                    distinct.value + ' AS distinct_' + distinct.name +
-                    (
-                    ''',
-                    '''+
-                    ''',
-                    '''.join([key.value + ' AS ' + key.name for key in self.wheres])
-                    if len(self.wheres)>0 else '')+
-                '''
-                FROM ''' + self.table + '''
-                WHERE  '''+distinct.value+' IS NOT NULL' +
-                #WHERE  distinct_'''+distinct.name+' IS NOT NULL' +
-                #WHERE TRUE ''' + ' '.join([' AND distinct_'+distinct.name+' IS NOT NULL' for distinct in self.distincts]) +
-                ' GROUP BY ' + distinct.value +(
-                ',' + ','.join([key.name for key in self.wheres])
-                if len(self.wheres)>0 else '')+'''
-            ) AS t1
-            '''+
-            (
-            '''GROUP BY ''' + ','.join([key.name for key in self.wheres])
-            if len(self.wheres)>0 else '')+'''
-        ) AS inner_join_''' + distinct.name + ''' ON 
-            '''+
-            (
-            ''' AND
-            '''.join(['( from_t.' + key.name + ' = ' + 'inner_join_' + distinct.name + '.' + key.name +' or ( from_t.' + key.name + ' is null and inner_join_' + distinct.name + '.' + key.name + ' is null))' for key in self.wheres])
-            if len(self.wheres)>0 else 'TRUE')
-        for distinct in self.distincts])
-        if self.use_num else ''
-        )+
         '''
+        return ('''
+        CREATE VIEW ''' + self.rollup + '''_groundtruth_raw AS (
+        '''+self.create_groundtruth(self.table_name)+'''
         );'''
         )
+
+
+    def create_view_pretty(self,source,target):
+        '''
+        -- the view simplifies presentation of the hll columns
+        CREATE VIEW metahtml.metahtml_rollup_host AS
+        SELECT
+            hll_cardinality(hll) AS num_distinct_url,
+            count,
+            host
+        FROM metahtml.metahtml_rollup_host_raw;
+        '''
+        return ('''
+        CREATE VIEW '''+target+''' AS
+        SELECT'''+
+            (
+            '''
+            '''+
+            '''
+            '''.join([
+                distinct.algebra.view('distinct_'+distinct.name)
+                +' AS distinct_'+distinct.name+',' for distinct in self.distincts
+                ])
+            if self.use_hll else ''
+            )+
+            '''
+            count'''+
+            (
+            ''',
+            '''+
+            ''',
+            '''.join([key.name for key in self.wheres])
+            if len(self.wheres)>0 else '' )+
+            '''
+        FROM '''+source+'''
+        WHERE count != 0
+        '''
+        +
+        (
+        '''
+        '''.join(['''
+            AND ''' + distinct.algebra.view('distinct_'+distinct.name) 
+                    + ' != ' 
+                    + distinct.algebra.view(distinct.algebra.zero)
+                for distinct in self.distincts
+            ])
+        )+'''
+        ;''')
 
 
     def create_insert(self):
@@ -604,13 +547,8 @@ class Rollup:
         INSERT INTO '''+self.rollup_table_name+''' ('''+
             (
             '''
-            '''.join([distinct.name+'_hll,' for distinct in self.distincts])
-            if self.use_hll else ''
-            )+
-            (
-            '''
             '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
-            if self.use_num else ''
+            if self.use_hll else ''
             )+
             '''
             count'''+
@@ -622,22 +560,18 @@ class Rollup:
             if len(self.wheres)>0 else '') + '''
             )
         SELECT *
-        FROM ''' + self.rollup + '_groundtruth;')
+        FROM ''' + self.rollup + '_groundtruth_raw;')
 
 
     def create(self):
         return [
             self.create_table(),
             self.create_indexes_notnull(),
-            self.create_indexes_hll(),
-            self.create_indexes_num(),
-            self.create_indexes_int(),
-            self.create_index(),
-            self.create_view(),
-            self.create_trigger_insert(),
-            self.create_trigger_update(),
-            self.create_trigger_delete(),
+            #self.create_indexes_wheres(),
+            self.create_trigger(),
             self.create_view_groundtruth(),
+            self.create_view_pretty(self.rollup_table_name,self.rollup),
+            self.create_view_pretty(self.rollup+'_groundtruth_raw',self.rollup+'_groundtruth'),
             self.create_insert(),
             ]
 
@@ -648,9 +582,7 @@ def drop_rollup_str(rollup):
     return ('''
     DROP TABLE '''+rollup_table_name+''' CASCADE;
     DROP VIEW '''+rollup+'''_groundtruth CASCADE;
-    DROP FUNCTION '''+rollup_table_name+'''_insert_f CASCADE;
-    DROP FUNCTION '''+rollup_table_name+'''_update_f CASCADE;
-    DROP FUNCTION '''+rollup_table_name+'''_delete_f CASCADE;
+    DROP FUNCTION '''+rollup_table_name+'''_triggerfunc CASCADE;
 ''')
 
 
@@ -658,15 +590,16 @@ if __name__ == '__main__':
     import doctest
     t = Rollup(
             table='metahtml.metahtml',
+            temporary=True,
             columns=['country','language','person_name','age'],
             rollup='metahtml.metahtml_rollup_host',
             wheres=[
-                Key('lower(country)','text','country',False),
-                Key('language','text','language',False),
+                Key('lower(country)','text','country',None),
+                Key('language','text','language',None),
                 ],
             distincts=[
-                Key('name','text','name',False),
-                Key('userid','int','userid',False),
+                Key('name','text','name','count'),
+                Key('userid','int','userid','count'),
                 ]
             )
     doctest.testmod(extraglobs={'t': t})
