@@ -76,6 +76,7 @@ RETURNS NULL ON NULL INPUT;
 CREATE OR REPLACE FUNCTION create_rollup(
     table_name  REGCLASS,
     rollup_name TEXT,
+    tablespace TEXT DEFAULT 'pg_default',
     wheres TEXT DEFAULT '',
     distincts TEXT DEFAULT ''
     )
@@ -143,9 +144,17 @@ RETURNS VOID AS $$
         # everything worked without error, so return
         return ret
 
+    # if no tablespace provided, calculate the default tablespace
+    if tablespace is None:
+        tablespace_name = plpy.execute('show default_tablespace;')[0]['default_tablespace'];
+        if tablespace_name is None:
+            tablespace_name = 'pg_default'
+    else:
+        tablespace_name = tablespace
+
+    # extract a list of wheres and distincts from the input parameters
     wheres_list = pg_rollup._extract_arguments(wheres)
     distincts_list = pg_rollup._extract_arguments(distincts)
-
     if len(wheres_list)==1 and wheres_list[0].strip()=='':
         wheres_list=[]
     if len(distincts_list)==1 and distincts_list[0].strip()=='':
@@ -160,7 +169,7 @@ RETURNS VOID AS $$
     sqls = pg_rollup.Rollup(
         table_name,
         is_temp,
-        [],
+        tablespace_name,
         rollup_name,
         process_list(wheres_list, 'key'),
         process_list(distincts_list, 'distinct'),
@@ -171,8 +180,7 @@ RETURNS VOID AS $$
     for s in sqls:
         plpy.execute(s)
 $$
-LANGUAGE plpython3u
-RETURNS NULL ON NULL INPUT;
+LANGUAGE plpython3u;
 
 
 CREATE OR REPLACE FUNCTION drop_rollup(rollup_name REGCLASS)

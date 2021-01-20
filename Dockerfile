@@ -20,6 +20,9 @@ RUN cd /tmp \
  && make install \
  && rm -rf /tmp/postgresql-hll
 
+RUN mkdir /tmp/tablespace \
+ && chown postgres /tmp/tablespace
+
 WORKDIR /tmp/pg_rollup
 
 # copy over the project

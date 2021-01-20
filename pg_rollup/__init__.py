@@ -107,10 +107,10 @@ def _add_namespace(s, namespace):
 
 class Rollup:
 
-    def __init__(self, table, temporary, columns, rollup, wheres, distincts):
+    def __init__(self, table, temporary, tablespace, rollup, wheres, distincts):
         self.temporary = temporary
         self.table = table
-        self.columns = columns
+        self.tablespace = tablespace
         self.rollup = rollup
         self.use_hll = True
         self.null_support = True
@@ -174,7 +174,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
     if len(self.wheres)>0 else '''
     raw_true BOOLEAN DEFAULT TRUE UNIQUE NOT NULL''' )+
     '''
-);''')
+    ) TABLESPACE '''+self.tablespace+';')
 
     
     def create_indexes_notnull(self):
@@ -183,16 +183,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         See: https://www.enterprisedb.com/postgres-tutorials/postgresql-distinct-constraint-null-allowing-only-one-null
         '''
         if len(self.wheres)>0:
-            return ('\n'.join(['CREATE UNIQUE INDEX '''+self.rollup_name+'_index_'+binary+'_notnull ON '+self.rollup_table_name+' (' + ','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.wheres)])+') WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.wheres) if i=='0' ])+';' for binary in self.binaries]))
+            return ('\n'.join(['CREATE UNIQUE INDEX '''+self.rollup_name+'_index_'+binary+'_notnull ON '+self.rollup_table_name+' (' + ','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.wheres)])+') TABLESPACE '+self.tablespace+' WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.wheres) if i=='0' ])+';' for binary in self.binaries]))
         else:
             return ''
 
 
     def create_indexes_wheres(self):
-        if len(self.wheres)>0:
+        if len(self.wheres)>1:
             return '''
-            CREATE INDEX '''+self.rollup_name+'_index_num ON '+self.rollup_table_name+' ('+','.join([key.name for key in self.wheres])+''');
-            '''
+            CREATE INDEX '''+self.rollup_name+'_index_num ON '+self.rollup_table_name+' ('+','.join([key.name for key in self.wheres])+') TABLESPACE '+self.tablespace+';'
         else:
             return ''
 
@@ -591,7 +590,7 @@ if __name__ == '__main__':
     t = Rollup(
             table='metahtml.metahtml',
             temporary=True,
-            columns=['country','language','person_name','age'],
+            tablespace='pg_default',
             rollup='metahtml.metahtml_rollup_host',
             wheres=[
                 Key('lower(country)','text','country',None),
