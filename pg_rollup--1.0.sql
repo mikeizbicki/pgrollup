@@ -30,35 +30,151 @@ BEGIN
 END;
 $$;
 
+--------------------------------------------------------------------------------
 
-CREATE TABLE pg_rollups (
-    id SERIAL PRIMARY KEY,
-    table_name REGCLASS NOT NULL,
-    rollup_name REGCLASS NOT NULL UNIQUE,
-    proc_insert REGPROC NOT NULL,
-    proc_update REGPROC NOT NULL,
-    proc_delete REGPROC NOT NULL,
-    CONSTRAINT table_rollup UNIQUE(table_name,rollup_name)
+CREATE TABLE pg_rollup (
+    rollup_name TEXT PRIMARY KEY,
+    table_name TEXT NOT NULL,
+    event_id_sequence_name TEXT,
+    rollup_column TEXT,
+    sql TEXT NOT NULL,
+    mode TEXT NOT NULL,
+    last_aggregated_id BIGINT DEFAULT 0
 );
 
+
 /*
-CREATE OR REPLACE FUNCTION public.test_rollup1_raw_delete_f()
- RETURNS trigger
- LANGUAGE plpgsql
+ * The pg_rollup table should contain one row per rollup;
+ * this event trigger ensures that the row gets deleted when the rollup gets dropped.
+ * FIXME:
+ * This trigger doesn't seem to fire when a temporary table is automatically dropped at the end of a session.
+ * This can result in a table_name erroneously still existing in the pg_rollup table.
+ */
+CREATE OR REPLACE FUNCTION pg_rollup_drop_function()
+RETURNS event_trigger AS $$
+DECLARE
+    obj record;
+BEGIN
+    IF tg_tag LIKE 'DROP%'
+    THEN
+        FOR obj IN SELECT * FROM pg_event_trigger_dropped_objects()
+        LOOP
+            DELETE FROM pg_rollup WHERE table_name=obj.object_name;
+        END LOOP;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+CREATE EVENT TRIGGER pg_rollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pg_rollup_drop_function();
+
+
+/*
+ * Manual rollup functions modified from
+ * https://www.citusdata.com/blog/2018/06/14/scalable-incremental-data-aggregation/
+ *
+ * The incremental_rollup_window function has been modified so that it doesn't
+ * rollup the entire table at once, but in smaller chuncks;
+ * this is useful for rolling up large tables incrementally that have already been created
+ */
+CREATE FUNCTION incremental_rollup_window(
+    rollup_name text, 
+    max_rollup_size bigint default 4611686018427387904, -- 2**62
+    force_safe boolean default true,
+    OUT window_start bigint,
+    OUT window_end bigint
+)
+RETURNS record
+LANGUAGE plpgsql
 AS $function$
+DECLARE
+    table_to_lock regclass;
+BEGIN
+    /*
+     * Perform aggregation from the last aggregated ID + 1 up to the last committed ID.
+     * We do a SELECT .. FOR UPDATE on the row in the rollup table to prevent
+     * aggregations from running concurrently.
+     */
+    SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
+    INTO table_to_lock, window_start, window_end
+    FROM pg_rollup
+    WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE 'rollup ''%'' is not in the pg_rollup table', rollup_name;
+    END IF;
+
+    IF window_end IS NULL THEN
+        /* sequence was never used */
+        window_end := 0;
+        RETURN;
+    END IF;
+
+    /*
+     * Play a little trick: We very briefly lock the table for writes in order to
+     * wait for all pending writes to finish. That way, we are sure that there are
+     * no more uncommitted writes with a identifier lower or equal to window_end.
+     * By throwing an exception, we release the lock immediately after obtaining it
+     * such that writes can resume.
+     */
+    IF force_safe THEN
         BEGIN
-            RAISE EXCEPTION 'cannot delete from tables with distinct rollup constraints';
-        RETURN NEW;
+            -- NOTE: The line below is modified from the original to acquire
+            -- a ROW EXCLUSIVE lock rather than an exclusive lock; this lock still
+            -- prevents update/insert/delete operations on the table, but it does
+            -- not block on autovacuum (SHARE UPDATE EXCLUSIVE lock) or
+            -- create index (SHARE lock).  I believe everything is therefore still
+            -- correct, but this is magic beyond my domain expertise, so I'm
+            -- not 100% certain.
+            EXECUTE format('LOCK %s IN ROW EXCLUSIVE MODE', table_to_lock);
+            RAISE 'release table lock';
+        EXCEPTION WHEN OTHERS THEN
         END;
-        $function$
+    END IF;
+
+    /*
+     * Remember the end of the window to continue from there next time.
+     */
+    UPDATE pg_rollup SET last_aggregated_id = window_end WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name;
+END;
+$function$;
 
 
-CREATE TRIGGER metahtml_rollup_host_insert_t
-    BEFORE INSERT 
-    ON metahtml.metahtml
-    FOR EACH ROW
-    EXECUTE PROCEDURE metahtml.metahtml_rollup_host_insert_f();
-*/
+CREATE FUNCTION do_rollup(
+    rollup_name text,
+    max_rollup_size bigint default 4611686018427387904, -- 2**62
+    force_safe boolean default true,
+    OUT start_id bigint, 
+    OUT end_id bigint
+)
+RETURNS record
+LANGUAGE plpgsql
+AS $function$
+DECLARE
+    sql_command text;
+    mode text;
+BEGIN
+    /* if the rollup is in trigger mode, then there is nothing to update, so we do nothing */
+    SELECT pg_rollup.mode INTO mode FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name;
+    IF mode != 'trigger' THEN
+
+        /* determine which page views we can safely aggregate */
+        SELECT window_start, window_end INTO start_id, end_id
+        FROM incremental_rollup_window(rollup_name,max_rollup_size,force_safe);
+
+        /* exit early if there are no new page views to aggregate */
+        IF start_id > end_id THEN RETURN; END IF;
+
+        /* this is the new code that gets the rollup command from the table
+         * and executes it */
+        SELECT pg_rollup.sql 
+        INTO sql_command
+        FROM pg_rollup 
+        WHERE pg_rollup.rollup_name = do_rollup.rollup_name;
+
+        EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
+    END IF;
+END;
+$function$;
+
 
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
@@ -78,7 +194,9 @@ CREATE OR REPLACE FUNCTION create_rollup(
     rollup_name TEXT,
     tablespace TEXT DEFAULT 'pg_default',
     wheres TEXT DEFAULT '',
-    distincts TEXT DEFAULT ''
+    distincts TEXT DEFAULT '',
+    key TEXT DEFAULT NULL,
+    mode TEXT DEFAULT 'trigger'
     )
 RETURNS VOID AS $$
     import pg_rollup
@@ -173,12 +291,84 @@ RETURNS VOID AS $$
         rollup_name,
         process_list(wheres_list, 'key'),
         process_list(distincts_list, 'distinct'),
-        #use_hll,
-        #use_raw,
-        #null_support = True
+        key
     ).create()
     for s in sqls:
         plpy.execute(s)
+
+    # insert into the pg_rollup table
+    if key:
+        event_id_sequence_name = f"'{table_name}_{key}_seq'"
+        rollup_column = key
+    else:
+        # FIXME: set rollup_column to primary key
+        event_id_sequence_name = 'NULL'
+        rollup_column = None
+    plpy.execute(f"insert into pg_rollup (rollup_name, table_name, rollup_column, event_id_sequence_name, sql, mode) values ('{rollup_name}','{table_name}','{rollup_column}',{event_id_sequence_name},'{rollup_name}_raw_manualrollup','init')")
+
+    # set the rollup mode
+    plpy.execute("select rollup_mode('"+rollup_name+"','"+mode+"')")
+
+    # insert values into the rollup
+    plpy.execute(f"select {rollup_name}_raw_reset();")
+$$
+LANGUAGE plpython3u;
+
+
+CREATE OR REPLACE FUNCTION rollup_mode(rollup_name REGCLASS, mode TEXT)
+RETURNS VOID AS $$
+    
+    sql = (f"select * from pg_rollup where rollup_name='{rollup_name}'")
+    pg_rollup = plpy.execute(sql)[0]
+
+    # turn off the old mode
+    if pg_rollup['mode'] == 'trigger':
+        plpy.execute(f"""
+            DROP TRIGGER IF EXISTS {rollup_name}_insert ON {pg_rollup['table_name']};
+            DROP TRIGGER IF EXISTS {rollup_name}_update ON {pg_rollup['table_name']};
+            DROP TRIGGER IF EXISTS {rollup_name}_delete ON {pg_rollup['table_name']};
+            UPDATE pg_rollup SET last_aggregated_id=COALESCE((select max({pg_rollup['rollup_column']}) from {pg_rollup['table_name']}),0) WHERE rollup_name='{rollup_name}';
+            """)
+
+    if pg_rollup['mode'] == 'manual':
+        plpy.execute(f"select do_rollup('{rollup_name}');")
+
+
+    # enter the new mode
+    if mode=='trigger':
+
+        # first we do a manual rollup to ensure that the rollup table is up to date
+        if pg_rollup['event_id_sequence_name'] is not None:
+            plpy.execute(f"select do_rollup('{rollup_name}');")
+
+        # next we create triggers
+        rollup_table_name = rollup_name+'_raw'
+        sql = ('''
+            CREATE TRIGGER '''+rollup_name+'''_insert
+                AFTER INSERT
+                ON ''' + pg_rollup['table_name'] + '''
+                REFERENCING NEW TABLE AS new_table
+                FOR EACH STATEMENT
+                EXECUTE PROCEDURE ''' + rollup_table_name+'''_triggerfunc();
+
+            CREATE TRIGGER '''+rollup_name+'''_update
+                AFTER UPDATE
+                ON ''' + pg_rollup['table_name'] + '''
+                REFERENCING NEW TABLE AS new_table
+                            OLD TABLE AS old_table
+                FOR EACH STATEMENT
+                EXECUTE PROCEDURE ''' + rollup_table_name+'''_triggerfunc();
+
+            CREATE TRIGGER '''+rollup_name+'''_delete
+                AFTER DELETE
+                ON ''' + pg_rollup['table_name'] + '''
+                REFERENCING OLD TABLE AS old_table
+                FOR EACH STATEMENT
+                EXECUTE PROCEDURE ''' + rollup_table_name+'''_triggerfunc();
+                ''')
+        plpy.execute(sql)
+
+    plpy.execute(f"UPDATE pg_rollup SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
 $$
 LANGUAGE plpython3u;
 

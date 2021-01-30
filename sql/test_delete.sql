@@ -121,3 +121,4 @@ insert into test (name,num) values
 select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup2');
 
+drop table test cascade;

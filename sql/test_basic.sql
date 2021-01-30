@@ -106,3 +106,5 @@ select drop_rollup('test_rollup1');
 select drop_rollup('test_rollup2');
 select drop_rollup('test_rollup3');
 select drop_rollup('test_rollup4');
+
+drop table test cascade;

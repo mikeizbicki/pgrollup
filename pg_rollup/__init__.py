@@ -107,13 +107,14 @@ def _add_namespace(s, namespace):
 
 class Rollup:
 
-    def __init__(self, table, temporary, tablespace, rollup, wheres, distincts):
+    def __init__(self, table, temporary, tablespace, rollup, wheres, distincts, rollup_column):
         self.temporary = temporary
         self.table = table
         self.tablespace = tablespace
         self.rollup = rollup
         self.use_hll = True
         self.null_support = True
+        self.rollup_column = rollup_column
 
         self.wheres = [Key(k.value, k.type, 'where_'+k.name,None) for k in wheres]
         self.distincts = [Key(k.value, k.type, k.name,algebras[k.algebra]) for k in distincts]
@@ -196,136 +197,12 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             return ''
 
 
-    def create_trigger_insert(self):
-        '''
-        -- an insert trigger ensures that all future rows get rolled up
-        CREATE OR REPLACE FUNCTION metahtml.metahtml_rollup_host_insert_f()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN
-            IF metahtml.url_host(new.url) IS NOT NULL THEN
-                INSERT INTO metahtml.metahtml_rollup_host_raw (
-                    hll,
-                    count,
-                    host
-                    )
-                VALUES (
-                    hll_add(hll_empty(),hll_hash_text(new.url)),
-                    1,
-                    metahtml.url_host(new.url)
-                    )
-                ON CONFLICT (host)
-                DO UPDATE SET
-                    hll = metahtml.metahtml_rollup_host_raw.hll || excluded.hll,
-                    count = metahtml.metahtml_rollup_host_raw.count +  excluded.count;
-            END IF;
-        RETURN NEW;
-        END;
-        $$;
-
-        CREATE TRIGGER metahtml_rollup_host_insert_t
-            BEFORE INSERT 
-            ON metahtml.metahtml
-            FOR EACH ROW
-            EXECUTE PROCEDURE metahtml.metahtml_rollup_host_insert_f();
-        '''
-        return ('''
-        CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_insert_f()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN
-            IF TG_OP='UPDATE' OR TG_OP='DELETE' OR TG_OP='TRUNCATE' THEN
-                RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup', TG_OP;
-            END IF;
-        '''+'''
-        '''.join([
+    def _insert_statement(self, inverse, query):
+        if inverse and not all([distinct.algebra.negate for distinct in self.distincts]):
+            return '''
+            RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([distinct.algebra.agg for distinct in self.distincts if not distinct.algebra.negate])+ '''', TG_OP;
             '''
-                INSERT INTO '''+self.rollup_table_name+''' ('''+
-                    (
-                    '''
-                    '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
-                    if self.use_hll else ''
-                    )+
-                    '''
-                    count'''+
-                    (
-                    ''',
-                    '''+
-                    ''',
-                    '''.join([key.name for key in self.wheres])
-                    if len(self.wheres)>0 else '' )+ '''
-                    )
-                SELECT * FROM (SELECT * FROM (SELECT'''+
-                    (
-                    '''
-                    '''+
-                    '''
-                    '''.join([
-                        distinct.algebra.plus(
-                            distinct.algebra.zero,
-                            distinct.algebra.hom(_add_namespace(distinct.value,'new'))
-                            )+',' for distinct in self.distincts
-                        ])
-                    if self.use_hll else ''
-                    )+
-                    '''
-                    count(1)'''+
-                    (
-                    ''',
-                    '''+
-                    ''',
-                    '''.join([_add_namespace(key.value,'new') + ' AS '+key.name for key in self.wheres])
-                    if len(self.wheres)>0 else '') + ('''
-                    GROUP BY '''+', '.join([key.name for key in self.wheres])
-                    if len(self.wheres)>0 else '')+'''
-                    ) s ) t
-                    WHERE TRUE '''+
-                    ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres)])
-                    ) if self.null_support else '')+'''
-                ON CONFLICT '''
-                ' (' + 
-                (','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.wheres)]) if len(self.wheres)>0 else 'raw_true'
-                )+') WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.wheres) if i=='0' ])
-                +
-                '''
-                DO UPDATE SET'''+
-                    (
-                    '''
-                    '''+
-                    #'''
-                    #'''.join([distinct.name+'_hll = '+self.rollup_table_name+'.'+distinct.name+'_hll || excluded.'+distinct.name+'_hll,' for distinct in self.distincts])
-                    '''
-                    '''.join([
-                        'distinct_'+distinct.name+' = '+distinct.algebra.plus(
-                            self.rollup_table_name+'.distinct_'+distinct.name,
-                            'excluded.distinct_'+distinct.name+',' 
-                            )
-                        for distinct in self.distincts
-                        ])
-                    if self.use_hll else ''
-                    )+
-                    '''
-                    count = '''+self.rollup_table_name+'''.count + excluded.count;
-            '''+
-            (''
-            if self.null_support else ''
-            )
-            for binary in self.binaries])+
-            '''
-            RETURN NEW;
-        END;
-        $$;
-
-        CREATE TRIGGER '''+self.rollup_name+'''
-            BEFORE INSERT OR UPDATE OR DELETE
-            ON ''' + self.table + '''
-            FOR EACH ROW
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_insert_f();
-        ''')
-
-
-    def create_trigger(self):
-        '''
-        '''
-        def make_insert(inverse):
+        else:
             return '''
         '''.join([
             '''
@@ -356,7 +233,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             '''
             + ''.join([''',
                 '''+key.name for key in self.wheres])+'''
-            FROM ( ''' + self.create_groundtruth('old_table' if inverse else 'new_table') + ''' ) t
+            FROM ( ''' + self.create_groundtruth(query) + ''' ) t
                 WHERE TRUE '''+
                 ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.wheres)])
                 ) if self.null_support else '')+'''
@@ -388,28 +265,44 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         )
         for binary in self.binaries])
 
+
+    def create_manualrollup(self):
+        if self.rollup_column is not None:
+            return ('''
+            CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_manualrollup(
+                start_id bigint,
+                end_id bigint
+                )
+            RETURNS VOID LANGUAGE PLPGSQL AS $$
+            BEGIN
+            '''+self._insert_statement(False, '(SELECT * FROM '+self.table+' WHERE '+self.rollup_column+'>=start_id AND '+self.rollup_column+'<=end_id) AS __table_alias')+'''
+            END;
+            $$;
+            ''')
+        else:
+            return ''
+
+
+    def create_triggerfunc(self):
         return ('''
         CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_triggerfunc()
         RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
         BEGIN
-        /*
-        IF TG_OP='UPDATE' OR TG_OP='DELETE' OR TG_OP='TRUNCATE' THEN
-            RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup', TG_OP;
+        IF TG_OP='UPDATE' OR TG_OP='INSERT' THEN'''+self._insert_statement(False, 'new_table')+'''
         END IF;
-        */
-
-        IF TG_OP='UPDATE' OR TG_OP='INSERT' THEN'''+make_insert(False)+'''
+        IF TG_OP='UPDATE' OR TG_OP='DELETE' THEN'''+self._insert_statement(True, 'old_table')+'''
         END IF;
-        IF TG_OP='UPDATE' OR TG_OP='DELETE' THEN'''+
-        ( make_insert(True) if all([distinct.algebra.negate for distinct in self.distincts]) else '''
-            RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([distinct.algebra.agg for distinct in self.distincts if not distinct.algebra.negate])+ '''', TG_OP;
-        '''
-        )+'''
-        END IF;
-        RETURN NEW;
+        RETURN NULL;
         END;
         $$;
+        ''')
 
+
+    def create_triggers(self):
+        if not self.create_triggers:
+            return ''
+        else:
+            return ('''
         CREATE TRIGGER '''+self.rollup_name+'''_insert
             AFTER INSERT
             ON ''' + self.table + '''
@@ -543,6 +436,10 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         GROUP BY host;
         '''
         return ('''
+        CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_reset()
+        RETURNS VOID LANGUAGE PLPGSQL AS $$
+        BEGIN
+        TRUNCATE TABLE '''+self.rollup_table_name+''';
         INSERT INTO '''+self.rollup_table_name+''' ('''+
             (
             '''
@@ -559,7 +456,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             if len(self.wheres)>0 else '') + '''
             )
         SELECT *
-        FROM ''' + self.rollup + '_groundtruth_raw;')
+        FROM ''' + self.rollup + '''_groundtruth_raw;
+
+        '''+(
+        '''
+        UPDATE pg_rollup SET last_aggregated_id=(select max('''+self.rollup_column+''') from '''+self.table_name+") WHERE rollup_name='"+self.rollup_name+"""';
+        """ if self.rollup_column else '')+'''
+        END;
+        $$;
+        ''')
 
 
     def create(self):
@@ -567,7 +472,9 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             self.create_table(),
             self.create_indexes_notnull(),
             #self.create_indexes_wheres(),
-            self.create_trigger(),
+            self.create_manualrollup(),
+            self.create_triggerfunc(),
+            #self.create_triggers(),
             self.create_view_groundtruth(),
             self.create_view_pretty(self.rollup_table_name,self.rollup),
             self.create_view_pretty(self.rollup+'_groundtruth_raw',self.rollup+'_groundtruth'),
@@ -599,9 +506,10 @@ if __name__ == '__main__':
             distincts=[
                 Key('name','text','name','count'),
                 Key('userid','int','userid','count'),
-                ]
+                ],
+            rollup_column = None
             )
-    doctest.testmod(extraglobs={'t': t})
-    t.create()
+    #doctest.testmod(extraglobs={'t': t})
+    print('\n'.join(t.create()))
 
 

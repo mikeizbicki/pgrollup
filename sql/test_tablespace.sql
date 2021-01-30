@@ -45,4 +45,4 @@ select create_rollup(
     tablespace => 'example'
 );
 
-
+drop table test cascade;
