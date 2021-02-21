@@ -3,6 +3,7 @@ version: '3.3'
 services:
   db:
     build: .
+    command: postgres -c config_file=/etc/postgresql.conf
     volumes:
       - .:/tmp/pg_rollup
     environment:

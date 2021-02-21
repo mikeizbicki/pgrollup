@@ -30,6 +30,47 @@ BEGIN
 END;
 $$;
 
+
+--------------------------------------------------------------------------------
+
+CREATE TABLE algebras (
+    id                      SERIAL PRIMARY KEY,
+    name                    TEXT NOT NULL,
+    agg                     TEXT NOT NULL,
+    type                    TEXT NOT NULL,
+    hom                     TEXT NOT NULL,
+    zero                    TEXT NOT NULL,
+    plus                    TEXT NOT NULL,
+    view                    TEXT,
+    negate                  TEXT
+);
+
+INSERT INTO algebras
+    (name       ,agg            ,type       ,hom                    ,zero           ,plus               ,negate ,view)
+    VALUES
+    ('count'    ,'count'        ,'INTEGER'  ,'1'                    ,'0'            ,'x+y'              ,'-x'   ,'x'),
+    ('sum'      ,'sum'          ,'x'        ,'x'                    ,'0'            ,'x+y'              ,'-x'   ,'x'),
+    ('min'      ,'min'          ,'x'        ,'x'                    ,'0'            ,'least(x,y)'       ,NULL   ,'x'),
+    ('max'      ,'max'          ,'x'        ,'x'                    ,'0'            ,'greatest(x,y)'    ,NULL   ,'x'),
+    ('hll'      ,'hll_add_agg'  ,'hll'      ,'hll_hash_anynull(x)'  ,'hll_empty()'  ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
+    
+    /*
+    https://github.com/tvondra/tdigest
+
+    ('avg'      ,'avg'          ,'DOUBLE'   ,'x'                    ,'0'            ,'(x*count(x) + y*count(y))/(count(x)+count(y))'
+    stddev
+    higher order moments?
+    https://madlib.apache.org/docs/master/group__grp__sketches.html
+    https://github.com/ozturkosu/cms_topn  <-- doesn't build on postgres:12,10
+    https://github.com/citusdata/postgresql-topn
+    OLS
+    convex optimizations / online learning
+
+
+https://github.com/citusdata/pg_cron
+    */
+
+
 --------------------------------------------------------------------------------
 
 CREATE TABLE pg_rollup (
@@ -42,6 +83,12 @@ CREATE TABLE pg_rollup (
     last_aggregated_id BIGINT DEFAULT 0
 );
 
+CREATE TABLE pg_rollup_settings (
+    name TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+INSERT INTO pg_rollup_settings (name,value) VALUES
+    ('default_mode','trigger');
 
 /*
  * The pg_rollup table should contain one row per rollup;
@@ -142,6 +189,7 @@ CREATE FUNCTION do_rollup(
     rollup_name text,
     max_rollup_size bigint default 4611686018427387904, -- 2**62
     force_safe boolean default true,
+    delay_seconds integer default 0,
     OUT start_id bigint, 
     OUT end_id bigint
 )
@@ -155,6 +203,8 @@ BEGIN
     /* if the rollup is in trigger mode, then there is nothing to update, so we do nothing */
     SELECT pg_rollup.mode INTO mode FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name;
     IF mode != 'trigger' THEN
+
+        PERFORM pg_sleep(delay_seconds);
 
         /* determine which page views we can safely aggregate */
         SELECT window_start, window_end INTO start_id, end_id
@@ -192,11 +242,11 @@ RETURNS NULL ON NULL INPUT;
 CREATE OR REPLACE FUNCTION create_rollup(
     table_name  REGCLASS,
     rollup_name TEXT,
-    tablespace TEXT DEFAULT 'pg_default',
+    tablespace TEXT DEFAULT 'pg_default', -- FIXME: set to NULL
     wheres TEXT DEFAULT '',
     distincts TEXT DEFAULT '',
     key TEXT DEFAULT NULL,
-    mode TEXT DEFAULT 'trigger'
+    mode TEXT DEFAULT NULL
     )
 RETURNS VOID AS $$
     import pg_rollup
@@ -262,7 +312,15 @@ RETURNS VOID AS $$
         # everything worked without error, so return
         return ret
 
+    # if no mode provided, calculate the default mode
+    global mode
+    if mode is None:
+        mode = plpy.execute("select value from pg_rollup_settings where name='default_mode';")[0]['value'];
+        if mode is None:
+            mode = 'trigger'
+
     # if no tablespace provided, calculate the default tablespace
+    global tablespace
     if tablespace is None:
         tablespace_name = plpy.execute('show default_tablespace;')[0]['default_tablespace'];
         if tablespace_name is None:
@@ -316,12 +374,19 @@ LANGUAGE plpython3u;
 
 
 CREATE OR REPLACE FUNCTION rollup_mode(rollup_name REGCLASS, mode TEXT)
-RETURNS VOID AS $$
+RETURNS VOID AS $func$
     
     sql = (f"select * from pg_rollup where rollup_name='{rollup_name}'")
     pg_rollup = plpy.execute(sql)[0]
 
+    ########################################    
     # turn off the old mode
+    # NOTE:
+    # we should maintain the invariant that whenever we disable the old mode,
+    # the rollup tables are consistent with the underlying table;
+    # this requires calling the do_rollup function for all non-trigger options,
+    # which is potentially an expensive operation.
+    ########################################    
     if pg_rollup['mode'] == 'trigger':
         plpy.execute(f"""
             DROP TRIGGER IF EXISTS {rollup_name}_insert ON {pg_rollup['table_name']};
@@ -330,11 +395,32 @@ RETURNS VOID AS $$
             UPDATE pg_rollup SET last_aggregated_id=COALESCE((select max({pg_rollup['rollup_column']}) from {pg_rollup['table_name']}),0) WHERE rollup_name='{rollup_name}';
             """)
 
+    if pg_rollup['mode'] == 'cron':
+        plpy.execute(f'''
+            SELECT cron.unschedule('pg_rollup.{rollup_name}');
+            ''')
+        plpy.execute(f"select do_rollup('{rollup_name}');")
+
     if pg_rollup['mode'] == 'manual':
         plpy.execute(f"select do_rollup('{rollup_name}');")
 
-
+    ########################################    
     # enter the new mode
+    ########################################    
+    if mode=='cron':
+        # we use a "random" delay on the cron job to ensure that all of the jobs
+        # do not happen at the same time, overloading the database
+        sql = (f"select count(*) as count from cron.job where jobname ilike 'pg_rollup.%';")
+        num_jobs = plpy.execute(sql)[0]['count']
+        delay = 13*num_jobs%60
+        plpy.execute(f'''
+            SELECT cron.schedule(
+                'pg_rollup.{rollup_name}',
+                '* * * * *',
+                $$SELECT do_rollup('{rollup_name}',delay_seconds=>{delay});$$
+            );
+            ''')
+
     if mode=='trigger':
 
         # first we do a manual rollup to ensure that the rollup table is up to date
@@ -369,7 +455,7 @@ RETURNS VOID AS $$
         plpy.execute(sql)
 
     plpy.execute(f"UPDATE pg_rollup SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
-$$
+$func$
 LANGUAGE plpython3u;
 
 
