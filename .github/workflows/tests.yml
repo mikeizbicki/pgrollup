@@ -15,5 +15,5 @@ jobs:
       run: |
         docker-compose up -d --build
         sleep 20
-        docker-compose exec db make installcheck
+        docker-compose exec -T db make installcheck
         docker-compose down
