@@ -7,19 +7,6 @@ on:
   #schedule:
     #- cron:  '0 12 10 * *' # Monthly at noon on the tenth
 jobs:
-  make_installcheck:
-    strategy:
-      matrix:
-        pg: [12]
-    name: 🐘 PostgreSQL ${{ matrix.pg }}
-    runs-on: ubuntu-latest
-    container: pgxn/pgxn-tools
-    steps:
-      - run: pg-start ${{ matrix.pg }}
-      - uses: actions/checkout@v2
-      - run: apt-get update && apt-get install -y python3 python3-pip postgresql-server-dev-${{matrix.pg}} postgresql-plpython3-${{matrix.pg}} 
-      - run: pip3 install .
-      - run: pg-build-test
   docker:
     runs-on: ubuntu-latest
     steps:
@@ -27,4 +14,6 @@ jobs:
     - name: docker
       run: |
         docker-compose up -d --build
+        sleep 20
+        docker-compose exec db make installcheck
         docker-compose down
