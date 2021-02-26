@@ -48,6 +48,15 @@ RUN cd /tmp \
  && rm -rf /tmp/pg_cron
 COPY ./postgresql.conf /etc/postgresql.conf
 
+# install the tdigest plugin from source
+RUN cd /tmp \
+ && git clone https://github.com/citusdata/postgresql-topn \
+ && cd postgresql-topn \
+ && git checkout v2.3.1 \
+ && make \
+ && make install \
+ && rm -rf /tmp/postgresql-topn
+
 # create a tablespace directory for the testcases
 RUN mkdir /tmp/tablespace \
  && chown postgres /tmp/tablespace

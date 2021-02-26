@@ -7,34 +7,37 @@ Key = collections.namedtuple('Key', ['value','type','name','algebra'])
 Algebra = collections.namedtuple('Algebra', ['view','agg','hom','type','zero','plus','negate'])
 
 algebras = {
-    'count' : Algebra(
-        agg= lambda x:'count(1)',
-        hom = lambda x: '1',
-        type = lambda x: 'INTEGER',
-        zero = '0',
-        plus = lambda x,y: x+'+'+y,
-        view = lambda x: x,
-        negate = '-',
-        ),
-    'sum' : Algebra(
-        agg=lambda x: 'sum(x)',
-        hom = lambda x: x,
-        type = lambda x: x,
-        zero = '0',
-        plus = lambda x,y: x+'+'+y,
-        view = lambda x: x,
-        negate = '-',
-        ),
-    'hll' : Algebra(
-        agg=lambda x:'hll_add_agg('+x+')',
-        hom=lambda x:'hll_hash_anynull('+x+')',
-        type = lambda x: 'hll',
-        zero='hll_empty()',
-        plus= lambda x,y: x+' || '+y,
-        view= lambda x: 'floor(hll_cardinality('+x+'))',
-        negate=None,
-        ),
+    'count' : {
+        'agg' : 'count(*)',
+        'hom' : '1',
+        'type' : 'INTEGER',
+        'zero' : '0',
+        'plus' : 'x+y',
+        'view' : 'x',
+        'negate' : '-x',
+        },
+    'hll' : {
+        'agg' : 'hll_add_agg(x)',
+        'hom' : 'hll_hash_anynull(x)',
+        'type' : 'hll',
+        'zero' : 'hll_empty()',
+        'plus' :  'x||y',
+        'view' : 'floor(hll_cardinality(x))',
+        'negate' : None,
+        },
     }
+
+
+def _algsub(text, x='', y=''):
+    '''
+    >>> _algsub('hll_add_agg(x)', 'test')
+    'hll_add_agg(test)'
+    >>> _algsub('x||y', 'left', 'right')
+    'left||right'
+    >>> _algsub('xy(x,y)', 'left', 'right')
+    'xy(left,right)'
+    '''
+    return re.sub(r'\by\b',y,re.sub(r'\bx\b',x,text))
 
 
 def _extract_arguments(s):
@@ -105,6 +108,33 @@ def _add_namespace(s, namespace):
     return "'".join(chunks_namespaced)
 
 
+def parse_algebra(text):
+    '''
+    >>> parse_algebra('count(*) AS sum')
+    {'algebra': 'count', 'expr': '*', 'name': 'sum'}
+    >>> parse_algebra('count(*) as sum')
+    {'algebra': 'count', 'expr': '*', 'name': 'sum'}
+    >>> parse_algebra('count(*)')
+    {'algebra': 'count', 'expr': '*', 'name': '"count(*)"'}
+    >>> parse_algebra('sum(1+max(left,right))')
+    {'algebra': 'sum', 'expr': '1+max(left,right)', 'name': 'sum'}
+    '''
+    # FIXME: this will break columns in "" with capitalization
+    text = text.lower()
+
+    parts = text.split('as')
+    
+    agg = parts[0].strip()
+    ret = {
+        'algebra': agg[:agg.find("(")],
+        'expr': agg[agg.find("(")+1:agg.rfind(")")]
+        }
+    if len(parts) == 1:
+        ret['name'] = '"'+agg+'"' #ret['algebra']
+    else:
+        ret['name'] = parts[1].strip()
+    return ret
+
 class Rollup:
 
     def __init__(self, table, temporary, tablespace, rollup, wheres, distincts, rollup_column):
@@ -117,7 +147,7 @@ class Rollup:
         self.rollup_column = rollup_column
 
         self.wheres = [Key(k.value, k.type, 'where_'+k.name,None) for k in wheres]
-        self.distincts = [Key(k.value, k.type, k.name,algebras[k.algebra]) for k in distincts]
+        self.distincts = [Key(k.value, k.type, k.name, k.algebra) for k in distincts]
 
         if '.' in table:
             self.schema_name, self.table_name = table.split('.')
@@ -147,28 +177,15 @@ class Rollup:
 
 
     def create_table(self):
-        '''
-        >>> print(t.create_table())
-        CREATE TABLE metahtml.metahtml_rollup_host_raw (
-            distinct_name INTEGER NOT NULL,
-            distinct_userid INTEGER NOT NULL,
-            count INTEGER NOT NULL,
-            where_country text,
-            where_language text
-        );
-        '''
         temp_str = 'TEMPORARY ' if self.temporary else ''
         return (
 f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
     (
     '''
-    '''.join(['distinct_'+distinct.name + ' '+distinct.algebra.type(distinct.type) +' NOT NULL,' for distinct in self.distincts])+'''
+    '''.join([''+distinct.name + ' '+_algsub(distinct.algebra['type'],distinct.type) +' NOT NULL,' for distinct in self.distincts])+'''
     '''
     if self.use_hll else ''
     )+
-    '''count INTEGER NOT NULL,
-    '''
-    +
     (
     ''',
     '''.join([key.name + ' ' + key.type for key in self.wheres])
@@ -198,22 +215,21 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
 
 
     def _insert_statement(self, inverse, query):
-        if inverse and not all([distinct.algebra.negate for distinct in self.distincts]):
+        if inverse and not all([distinct.algebra['negate'] for distinct in self.distincts]):
             return '''
-            RAISE EXCEPTION 'cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([distinct.algebra.agg for distinct in self.distincts if not distinct.algebra.negate])+ '''', TG_OP;
+            RAISE EXCEPTION $exception$ cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([distinct.algebra['agg'] for distinct in self.distincts if not distinct.algebra['negate']])+ '''$exception$, TG_OP;
             '''
         else:
             return '''
         '''.join([
             '''
-            INSERT INTO '''+self.rollup_table_name+''' ('''+
+            INSERT INTO '''+self.rollup_table_name+''' (
+                '''+
                 (
-                '''
-                '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
+                ''',
+                '''.join([''+distinct.name for distinct in self.distincts])
                 if self.use_hll else ''
                 )+
-                '''
-                count'''+
                 (
                 ''',
                 '''+
@@ -221,16 +237,13 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 '''.join([key.name for key in self.wheres])
                 if len(self.wheres)>0 else '' )+ '''
                 )
-            SELECT '''
-            + '''
+            SELECT 
+                '''
+            + ''',
             '''.join([
-                (distinct.algebra.negate if inverse else '')+' distinct_'+distinct.name+','
+                (_algsub(distinct.algebra['negate'],' '+''+distinct.name) if inverse else ' '+''+distinct.name)
                 for distinct in self.distincts
             ])
-            +
-            '''
-            '''+('-' if inverse else '')+'''count
-            '''
             + ''.join([''',
                 '''+key.name for key in self.wheres])+'''
             FROM ( ''' + self.create_groundtruth(query) + ''' ) t
@@ -247,18 +260,18 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 (
                 '''
                 '''+
-                '''
+                ''',
                 '''.join([
-                    'distinct_'+distinct.name+' = '+distinct.algebra.plus(
-                        self.rollup_table_name+'.distinct_'+distinct.name,
-                        'excluded.distinct_'+distinct.name+',' 
+                    ''+distinct.name+' = '+_algsub(
+                        distinct.algebra['plus'],
+                        self.rollup_table_name+'.'+''+distinct.name,
+                        'excluded.'+''+distinct.name
                         )
                     for distinct in self.distincts
                     ])
                 if self.use_hll else ''
                 )+
-                '''
-                count = '''+self.rollup_table_name+'''.count + excluded.count;
+                ''';
         '''+
         (''
         if self.null_support else ''
@@ -333,20 +346,18 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 (
                 '''
                 '''+
-                '''
+                ''',
                 '''.join([
-                    distinct.algebra.agg(
-                        distinct.algebra.hom(distinct.value)
-                        )+' AS distinct_'+distinct.name+','
+                    _algsub(
+                        distinct.algebra['agg'],
+                        distinct.value
+                        )+' AS '+''+distinct.name
                     for distinct in self.distincts
                     ])
                 if self.use_hll else ''
                 )+
-                '''
-                count(1) as count'''+
                 (
-                ''',
-                '''+
+                ''','''+
                 ''',
                 '''.join([key.value + ' AS ' + key.name for key in self.wheres])
                 if len(self.wheres)>0 else '') +
@@ -375,7 +386,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         -- the view simplifies presentation of the hll columns
         CREATE VIEW metahtml.metahtml_rollup_host AS
         SELECT
-            hll_cardinality(hll) AS num_distinct_url,
+            hll_cardinality(hll) AS num_rollup_url,
             count,
             host
         FROM metahtml.metahtml_rollup_host_raw;
@@ -386,15 +397,13 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             (
             '''
             '''+
-            '''
+            ''',
             '''.join([
-                distinct.algebra.view('distinct_'+distinct.name)
-                +' AS distinct_'+distinct.name+',' for distinct in self.distincts
+                _algsub(distinct.algebra['view'],''+distinct.name)
+                +' AS '+''+distinct.name for distinct in self.distincts
                 ])
             if self.use_hll else ''
             )+
-            '''
-            count'''+
             (
             ''',
             '''+
@@ -402,17 +411,21 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             '''.join([key.name for key in self.wheres])
             if len(self.wheres)>0 else '' )+
             '''
-        FROM '''+source+'''
-        WHERE count != 0
+        FROM '''+source+(
         '''
+        WHERE
+        '''
+        if len(['' for distinct in self.distincts if distinct.algebra['negate'] is not None])>0
+        else ''
+        )
         +
         (
-        '''
+        ''' AND 
         '''.join(['''
-            AND ''' + distinct.algebra.view('distinct_'+distinct.name) 
+                ''' + _algsub(distinct.algebra['view'],''+distinct.name)
                     + ' != ' 
-                    + distinct.algebra.view(distinct.algebra.zero)
-                for distinct in self.distincts
+                    + _algsub(distinct.algebra['view'],distinct.algebra['zero'])
+                for distinct in self.distincts if distinct.algebra['negate'] is not None
             ])
         )+'''
         ;''')
@@ -442,12 +455,10 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         TRUNCATE TABLE '''+self.rollup_table_name+''';
         INSERT INTO '''+self.rollup_table_name+''' ('''+
             (
-            '''
-            '''.join(['distinct_'+distinct.name+',' for distinct in self.distincts])
+            ''',
+            '''.join([''+distinct.name for distinct in self.distincts])
             if self.use_hll else ''
             )+
-            '''
-            count'''+
             (
             ''',
             '''+
@@ -471,10 +482,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         return [
             self.create_table(),
             self.create_indexes_notnull(),
-            #self.create_indexes_wheres(),
             self.create_manualrollup(),
             self.create_triggerfunc(),
-            #self.create_triggers(),
             self.create_view_groundtruth(),
             self.create_view_pretty(self.rollup_table_name,self.rollup),
             self.create_view_pretty(self.rollup+'_groundtruth_raw',self.rollup+'_groundtruth'),

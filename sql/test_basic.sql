@@ -1,5 +1,6 @@
 create or replace language plpython3u;
 create extension if not exists hll;
+create extension if not exists topn;
 create extension if not exists pg_rollup;
 
 create temporary table test (
@@ -52,20 +53,46 @@ select create_rollup(
     'test',
     'test_rollup3',
     wheres => 'name',
-    distincts => 'num'
+    rollups => 'hll(num)'
 );
 
 select create_rollup(
     'test',
     'test_rollup4',
-    distincts => 'name,num'
+    rollups => $$
+        hll(name),
+        hll(num)
+    $$
 );
 
+select create_rollup(
+    'test',
+    'test_rollup5',
+    wheres => 'name',
+    rollups => $$
+        sum(num) as sum,
+        count(*) as count_all,
+        count(num) as count_num,
+        max(num),
+        min(num)
+    $$
+);
+
+select create_rollup(
+    'test',
+    'test_rollup6',
+    wheres => 'num',
+    rollups => $$
+        topn(name)
+    $$
+);
 
 select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup2');
 select assert_rollup('test_rollup3');
 select assert_rollup('test_rollup4');
+select assert_rollup('test_rollup5');
+select assert_rollup('test_rollup6');
 
 
 insert into test (name,num) values
@@ -101,10 +128,14 @@ select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup2');
 select assert_rollup('test_rollup3');
 select assert_rollup('test_rollup4');
+select assert_rollup('test_rollup5');
+select assert_rollup('test_rollup6');
 
 select drop_rollup('test_rollup1');
 select drop_rollup('test_rollup2');
 select drop_rollup('test_rollup3');
 select drop_rollup('test_rollup4');
+select drop_rollup('test_rollup5');
+select drop_rollup('test_rollup6');
 
 drop table test cascade;

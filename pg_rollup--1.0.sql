@@ -1,6 +1,7 @@
 \echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
 
 
+/*
 CREATE OR REPLACE FUNCTION hll_hash_anynull(a anyelement) RETURNS hll_hashval AS $$
     SELECT COALESCE(hll_hash_any(a), 0::hll_hashval);
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
@@ -13,6 +14,7 @@ BEGIN
     assert( hll_hash_anynull('123'::text) = hll_hash_any('123'::text));
 END;
 $$;
+*/
 
 
 CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
@@ -38,7 +40,6 @@ CREATE TABLE algebras (
     name                    TEXT NOT NULL,
     agg                     TEXT NOT NULL,
     type                    TEXT NOT NULL,
-    hom                     TEXT NOT NULL,
     zero                    TEXT NOT NULL,
     plus                    TEXT NOT NULL,
     view                    TEXT,
@@ -46,15 +47,25 @@ CREATE TABLE algebras (
 );
 
 INSERT INTO algebras
-    (name       ,agg            ,type       ,hom                    ,zero           ,plus               ,negate ,view)
+    (name       ,agg                            ,type       ,zero                       ,plus               ,negate ,view)
     VALUES
-    ('count'    ,'count'        ,'INTEGER'  ,'1'                    ,'0'            ,'x+y'              ,'-x'   ,'x'),
-    ('sum'      ,'sum'          ,'x'        ,'x'                    ,'0'            ,'x+y'              ,'-x'   ,'x'),
-    ('min'      ,'min'          ,'x'        ,'x'                    ,'0'            ,'least(x,y)'       ,NULL   ,'x'),
-    ('max'      ,'max'          ,'x'        ,'x'                    ,'0'            ,'greatest(x,y)'    ,NULL   ,'x'),
-    ('hll'      ,'hll_add_agg'  ,'hll'      ,'hll_hash_anynull(x)'  ,'hll_empty()'  ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
+    ('count'    ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'x+y'              ,'-x'   ,'x'),
+    ('sum'      ,'sum(x)'                       ,'x'        ,'0'                        ,'x+y'              ,'-x'   ,'x'),
+    ('min'      ,'min(x)'                       ,'x'        ,'null'                     ,'least(x,y)'       ,NULL   ,'x'),
+    ('max'      ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(x,y)'    ,NULL   ,'x'),
+    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,'topn_add_agg(null)'       ,'topn_union(x,y)'  ,NULL   ,'x'),
+    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
+
+    --('hll'      ,'hll_add_agg(x)'  ,'hll'      ,'hll_hash_any(x)'  ,'hll_empty()'  ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
+    --('tdigest'  ,'tdigest(x,100)'               ,'tdigest'  ,'null'         ,'greatest(x,y)'    ,NULL   ,'tdigest_percentile(x,0.50)'),
     
     /*
+
+    bit_and
+    bit_or
+    bool_and
+    bool_or
+
     https://github.com/tvondra/tdigest
 
     ('avg'      ,'avg'          ,'DOUBLE'   ,'x'                    ,'0'            ,'(x*count(x) + y*count(y))/(count(x)+count(y))'
@@ -62,7 +73,6 @@ INSERT INTO algebras
     higher order moments?
     https://madlib.apache.org/docs/master/group__grp__sketches.html
     https://github.com/ozturkosu/cms_topn  <-- doesn't build on postgres:12,10
-    https://github.com/citusdata/postgresql-topn
     OLS
     convex optimizations / online learning
 
@@ -244,6 +254,7 @@ CREATE OR REPLACE FUNCTION create_rollup(
     rollup_name TEXT,
     tablespace TEXT DEFAULT 'pg_default', -- FIXME: set to NULL
     wheres TEXT DEFAULT '',
+    rollups TEXT DEFAULT 'count(*) as count',
     distincts TEXT DEFAULT '',
     key TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL
@@ -253,7 +264,7 @@ RETURNS VOID AS $$
     import re
     import collections
 
-    def process_list(ks, error_str):
+    def process_list(ks, error_str, parse_algebra=False):
         '''
         converts postgresql strings of either of the following forms
             value
@@ -264,26 +275,33 @@ RETURNS VOID AS $$
         '''
         ret = []
         for k in ks:
-            # extract the value from the input,
-            # and if the 'AS' syntax is used, also extract the name
-            l,_,r = k.rpartition('AS ')
- 
-            # case when AS does not apper in the input string
-            if l=='': 
-                value = k
-                name = None
+            if not parse_algebra:
+                # extract the value from the input,
+                # and if the 'AS' syntax is used, also extract the name
+                l,_,r = k.rpartition('AS ')
+     
+                # case when AS does not apper in the input string
+                if l=='': 
+                    value = k
+                    name = None
 
-            # when AS appears in the input string,
-            # but the contents to the right of AS are not a valid column name;
-            # we treat the input as not using the AS syntax
-            elif not re.match(r'^\w+$', r.strip()): 
-                value = k
-                name = None
+                # when AS appears in the input string,
+                # but the contents to the right of AS are not a valid column name;
+                # we treat the input as not using the AS syntax
+                elif not re.match(r'^\w+$', r.strip()): 
+                    value = k
+                    name = None
 
-            # the AS syntax was used correctly
+                # the AS syntax was used correctly
+                else:
+                    value = l.strip()
+                    name = r.strip()
+                algebra = 'hll'
             else:
-                value = l.strip()
-                name = r.strip()
+                d = pg_rollup.parse_algebra(k)
+                value = d['expr']
+                name = d['name']
+                algebra = d['algebra']
 
             # extract the type and a default name from the value
             sql = f'select {value} from {table_name} limit 1;'
@@ -301,7 +319,9 @@ RETURNS VOID AS $$
 
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
-            ret.append(pg_rollup.Key(value,type,name,'hll'))
+            sql = f"select * from algebras where name='{algebra}';"
+            algebra_dictionary = plpy.execute(sql)[0]
+            ret.append(pg_rollup.Key(value,type,name,algebra_dictionary))
 
         # if there are any duplicate names, throw an error
         names = [k.name for k in ret]
@@ -330,11 +350,16 @@ RETURNS VOID AS $$
 
     # extract a list of wheres and distincts from the input parameters
     wheres_list = pg_rollup._extract_arguments(wheres)
-    distincts_list = pg_rollup._extract_arguments(distincts)
     if len(wheres_list)==1 and wheres_list[0].strip()=='':
         wheres_list=[]
+
+    distincts_list = pg_rollup._extract_arguments(distincts)
     if len(distincts_list)==1 and distincts_list[0].strip()=='':
         distincts_list=[]
+
+    rollups_list = pg_rollup._extract_arguments(rollups)
+    if len(rollups_list)==1 and rollups_list[0].strip()=='':
+        rollups_list=[]
 
     # check if the table is temporary
     sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
@@ -348,7 +373,7 @@ RETURNS VOID AS $$
         tablespace_name,
         rollup_name,
         process_list(wheres_list, 'key'),
-        process_list(distincts_list, 'distinct'),
+        process_list(distincts_list, 'distinct')+ process_list(rollups_list, 'algebra', parse_algebra=True),
         key
     ).create()
     for s in sqls:
