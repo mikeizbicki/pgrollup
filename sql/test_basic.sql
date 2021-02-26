@@ -72,7 +72,7 @@ select create_rollup(
     rollups => $$
         sum(num) as sum,
         count(*) as count_all,
-        count(num) as count_num,
+        count(num),
         max(num),
         min(num)
     $$

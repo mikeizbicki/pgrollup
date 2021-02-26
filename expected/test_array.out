@@ -110,9 +110,9 @@ select create_rollup(
         unnest(array_uniq(b)) AS b,
         unnest(array_uniq(d)) AS d
     $$,
-    distincts => $$
-        a,
-        c
+    rollups => $$
+        hll(a),
+        hll(c)
     $$
 );
 NOTICE:  view "arrtest_rollup5_groundtruth_raw" will be a temporary view

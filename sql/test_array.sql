@@ -78,9 +78,9 @@ select create_rollup(
         unnest(array_uniq(b)) AS b,
         unnest(array_uniq(d)) AS d
     $$,
-    distincts => $$
-        a,
-        c
+    rollups => $$
+        hll(a),
+        hll(c)
     $$
 );
 

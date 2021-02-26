@@ -57,7 +57,7 @@ select create_rollup(
     'test_cron',
     'test_cron_rollup3',
     wheres => 'name',
-    distincts => 'num',
+    rollups => 'hll(num)',
     key => 'id',
     mode => 'trigger'
 );
@@ -65,7 +65,7 @@ select create_rollup(
 select create_rollup(
     'test_cron',
     'test_cron_rollup4',
-    distincts => 'name,num',
+    rollups => 'hll(name),hll(num)',
     key => 'id',
     mode => 'cron'
 );

@@ -94,10 +94,10 @@ SELECT create_rollup(
         url_host_key(url) AS host_key,
         date_trunc('day', accessed_at) AS access_day
     $$,
-    distincts => $$
-        url,
-        url_hostpathquery_key(url) AS hostpathquery,
-        url_hostpath_key(url) AS hostpath
+    rollups => $$
+        hll(url),
+        hll(url_hostpathquery_key(url)) AS hostpathquery,
+        hll(url_hostpath_key(url)) AS hostpath
     $$
 );
 
@@ -107,10 +107,10 @@ SELECT create_rollup(
     wheres => $$
         url_host_key(url) AS host_key
     $$,
-    distincts => $$
-        url,
-        url_hostpathquery_key(url) AS hostpathquery,
-        url_hostpath_key(url) AS hostpath
+    rollups => $$
+        hll(url),
+        hll(url_hostpathquery_key(url)) AS hostpathquery,
+        hll(url_hostpath_key(url)) AS hostpath
     $$
 );
 
@@ -120,10 +120,10 @@ SELECT create_rollup(
     wheres => $$
         date_trunc('day', accessed_at) AS access_day
     $$,
-    distincts => $$
-        url,
-        url_hostpathquery_key(url) AS hostpathquery,
-        url_hostpath_key(url) AS hostpath
+    rollups => $$
+        hll(url),
+        hll(url_hostpathquery_key(url)) AS hostpathquery,
+        hll(url_hostpath_key(url)) AS hostpath
     $$
 );
 
@@ -133,10 +133,10 @@ SELECT create_rollup(
     wheres => $$
         date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published
     $$,
-    distincts => $$
-        url,
-        url_hostpathquery_key(url) AS hostpathquery,
-        url_hostpath_key(url) AS hostpath
+    rollups => $$
+        hll(url),
+        hll(url_hostpathquery_key(url)) AS hostpathquery,
+        hll(url_hostpath_key(url)) AS hostpath
     $$
 );
 
@@ -147,10 +147,10 @@ SELECT create_rollup(
         date_trunc('day', accessed_at) AS access_day,
         date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published
     $$,
-    distincts => $$
-        url,
-        url_hostpathquery_key(url) AS hostpathquery,
-        url_hostpath_key(url) AS hostpath
+    rollups => $$
+        hll(url),
+        hll(url_hostpathquery_key(url)) AS hostpathquery,
+        hll(url_hostpath_key(url)) AS hostpath
     $$
 );
 
@@ -160,11 +160,11 @@ SELECT create_rollup(
     wheres => $$
         jsonb_array_elements(jsonb->'links'->'best'->'value')->>'href' AS links,
     $$,
-    distincts => $$
-        url,
-        url_hostpathquery_key(url) AS hostpathquery,
-        url_hostpath_key(url) AS hostpath,
-        url_host_key(url) AS host,
+    rollups => $$
+        hll(url),
+        hll(url_hostpathquery_key(url)) AS hostpathquery,
+        hll(url_hostpath_key(url)) AS hostpath,
+        hll(url_host_key(url)) AS host,
     $$
 );
 

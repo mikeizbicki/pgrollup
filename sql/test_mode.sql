@@ -56,7 +56,7 @@ select create_rollup(
     'test',
     'test_rollup3',
     wheres => 'name',
-    distincts => 'num',
+    rollups => 'hll(num)',
     key => 'id',
     mode => 'manual'
 );
@@ -64,7 +64,7 @@ select create_rollup(
 select create_rollup(
     'test',
     'test_rollup4',
-    distincts => 'name,num',
+    rollups => 'hll(name),hll(num)',
     key => 'id',
     mode => 'manual'
 );

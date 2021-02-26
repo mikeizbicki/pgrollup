@@ -38,16 +38,16 @@ select create_rollup(
     wheres => $$
         unnest(tsvector_to_array(to_tsvector(text))) AS tokens
     $$,
-    distincts => $$
-        id_user
+    rollups => $$
+        hll(id_user)
     $$
 );
 
 select create_rollup(
     'messages',
     'messages_rollup3',
-    distincts => $$
-        id_user
+    rollups => $$
+        hll(id_user)
     $$
 );
 

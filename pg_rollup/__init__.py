@@ -40,6 +40,24 @@ def _algsub(text, x='', y=''):
     return re.sub(r'\by\b',y,re.sub(r'\bx\b',x,text))
 
 
+def _joinsub(text, xtable, xval, ytable, yval, distincts):
+    '''
+    >>> _joinsub('hll(x)||hll(y)', 'xtable', 'xval', 'ytable', 'yval')
+    'xtable."hll(xval)"||ytable."hll(yval)"'
+    >>> _joinsub('xy(f(x),f(y))', 'xtable', 'xval', 'ytable', 'yval')
+    'xy(xtable."f(xval)",ytable."f(yval)")'
+    >>> _joinsub('avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))', 'xtable', 'xval', 'ytable', 'yval')
+    'xtable."avg(xval)"*(xtable."count(xval)"/(xtable."count(xval)"+ytable."count(yval)"))+ytable."avg(yval)"*(ytable."count(yval)"/(xtable."count(xval)"+ytable."count(yval)"))'
+    '''
+    subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)',xtable+r'."\1('+xval+')"',text)
+    suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)',ytable+r'."\1('+yval+')"',subx)
+    ret = suby
+    for distinct in distincts:
+        #ret = re.sub('"'+distinct.value+'"', distinct.name, ret)
+        ret = ret.replace('"'+distinct.algebra['name']+'('+distinct.value+')"', distinct.name)
+    return ret
+
+
 def _extract_arguments(s):
     '''
     >>> _extract_arguments('a,b,c')
@@ -262,10 +280,17 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 '''+
                 ''',
                 '''.join([
-                    ''+distinct.name+' = '+_algsub(
+                    ''+distinct.name+' = '+_joinsub(
                         distinct.algebra['plus'],
-                        self.rollup_table_name+'.'+''+distinct.name,
-                        'excluded.'+''+distinct.name
+                        self.rollup_table_name,
+                        ''+distinct.value,
+                        'excluded',
+                        ''+distinct.value,
+                        self.distincts
+                    #''+distinct.name+' = '+_algsub(
+                        #distinct.algebra['plus'],
+                        #self.rollup_table_name+'.'+''+distinct.name,
+                        #'excluded.'+''+distinct.name
                         )
                     for distinct in self.distincts
                     ])
@@ -513,8 +538,8 @@ if __name__ == '__main__':
                 Key('language','text','language',None),
                 ],
             distincts=[
-                Key('name','text','name','count'),
-                Key('userid','int','userid','count'),
+                Key('name','text','name',algebras['count']),
+                Key('userid','int','userid',algebras['count']),
                 ],
             rollup_column = None
             )

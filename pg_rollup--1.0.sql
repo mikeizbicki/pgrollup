@@ -49,12 +49,13 @@ CREATE TABLE algebras (
 INSERT INTO algebras
     (name       ,agg                            ,type       ,zero                       ,plus               ,negate ,view)
     VALUES
-    ('count'    ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'x+y'              ,'-x'   ,'x'),
-    ('sum'      ,'sum(x)'                       ,'x'        ,'0'                        ,'x+y'              ,'-x'   ,'x'),
-    ('min'      ,'min(x)'                       ,'x'        ,'null'                     ,'least(x,y)'       ,NULL   ,'x'),
-    ('max'      ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(x,y)'    ,NULL   ,'x'),
-    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,'topn_add_agg(null)'       ,'topn_union(x,y)'  ,NULL   ,'x'),
-    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
+    ('count'    ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'              ,'-x'   ,'x'),
+    ('avg'      ,'avg(x)'                       ,'FLOAT'    ,'0'                        ,'avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))'              ,'x'   ,'x'),
+    ('sum'      ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'              ,'-x'   ,'x'),
+    ('min'      ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'       ,NULL   ,'x'),
+    ('max'      ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'    ,NULL   ,'x'),
+    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,'topn_add_agg(null)'       ,'topn_union(topn(x),topn(y))'  ,NULL   ,'topn(x,1)'),
+    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'hll(x)||hll(y)'             ,NULL   ,'floor(hll_cardinality(x))');
 
     --('hll'      ,'hll_add_agg(x)'  ,'hll'      ,'hll_hash_any(x)'  ,'hll_empty()'  ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
     --('tdigest'  ,'tdigest(x,100)'               ,'tdigest'  ,'null'         ,'greatest(x,y)'    ,NULL   ,'tdigest_percentile(x,0.50)'),
@@ -66,18 +67,15 @@ INSERT INTO algebras
     bool_and
     bool_or
 
+    https://pgxn.org/dist/datasketches/1.2.0/
     https://github.com/tvondra/tdigest
 
-    ('avg'      ,'avg'          ,'DOUBLE'   ,'x'                    ,'0'            ,'(x*count(x) + y*count(y))/(count(x)+count(y))'
     stddev
     higher order moments?
     https://madlib.apache.org/docs/master/group__grp__sketches.html
     https://github.com/ozturkosu/cms_topn  <-- doesn't build on postgres:12,10
     OLS
     convex optimizations / online learning
-
-
-https://github.com/citusdata/pg_cron
     */
 
 
@@ -255,7 +253,6 @@ CREATE OR REPLACE FUNCTION create_rollup(
     tablespace TEXT DEFAULT 'pg_default', -- FIXME: set to NULL
     wheres TEXT DEFAULT '',
     rollups TEXT DEFAULT 'count(*) as count',
-    distincts TEXT DEFAULT '',
     key TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL
     )
@@ -282,14 +279,14 @@ RETURNS VOID AS $$
      
                 # case when AS does not apper in the input string
                 if l=='': 
-                    value = k
+                    value = k.strip()
                     name = None
 
                 # when AS appears in the input string,
                 # but the contents to the right of AS are not a valid column name;
                 # we treat the input as not using the AS syntax
                 elif not re.match(r'^\w+$', r.strip()): 
-                    value = k
+                    value = k.strip()
                     name = None
 
                 # the AS syntax was used correctly
@@ -298,6 +295,7 @@ RETURNS VOID AS $$
                     name = r.strip()
                 algebra = 'hll'
             else:
+                # FIXME: move the logic above into the parse_algebra function
                 d = pg_rollup.parse_algebra(k)
                 value = d['expr']
                 name = d['name']
@@ -348,14 +346,10 @@ RETURNS VOID AS $$
     else:
         tablespace_name = tablespace
 
-    # extract a list of wheres and distincts from the input parameters
+    # extract a list of wheres and rollups from the input parameters
     wheres_list = pg_rollup._extract_arguments(wheres)
     if len(wheres_list)==1 and wheres_list[0].strip()=='':
         wheres_list=[]
-
-    distincts_list = pg_rollup._extract_arguments(distincts)
-    if len(distincts_list)==1 and distincts_list[0].strip()=='':
-        distincts_list=[]
 
     rollups_list = pg_rollup._extract_arguments(rollups)
     if len(rollups_list)==1 and rollups_list[0].strip()=='':
@@ -373,7 +367,7 @@ RETURNS VOID AS $$
         tablespace_name,
         rollup_name,
         process_list(wheres_list, 'key'),
-        process_list(distincts_list, 'distinct')+ process_list(rollups_list, 'algebra', parse_algebra=True),
+        process_list(rollups_list, 'algebra', parse_algebra=True),
         key
     ).create()
     for s in sqls:
