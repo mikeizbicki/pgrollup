@@ -40,7 +40,7 @@ def _algsub(text, x='', y=''):
     return re.sub(r'\by\b',y,re.sub(r'\bx\b',x,text))
 
 
-def _joinsub(text, xtable, xval, ytable, yval, distincts):
+def _joinsub(text, xtable, xval, xzero, ytable, yval, yzero,distincts):
     '''
     >>> _joinsub('hll(x)||hll(y)', 'xtable', 'xval', 'ytable', 'yval')
     'xtable."hll(xval)"||ytable."hll(yval)"'
@@ -49,6 +49,8 @@ def _joinsub(text, xtable, xval, ytable, yval, distincts):
     >>> _joinsub('avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))', 'xtable', 'xval', 'ytable', 'yval')
     'xtable."avg(xval)"*(xtable."count(xval)"/(xtable."count(xval)"+ytable."count(yval)"))+ytable."avg(yval)"*(ytable."count(yval)"/(xtable."count(xval)"+ytable."count(yval)"))'
     '''
+    #subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)','COALESCE('+xtable+r'."\1('+xval+')",'+xzero+')',text)
+    #suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
     subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)',xtable+r'."\1('+xval+')"',text)
     suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)',ytable+r'."\1('+yval+')"',subx)
     ret = suby
@@ -200,7 +202,7 @@ class Rollup:
 f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
     (
     '''
-    '''.join([''+distinct.name + ' '+_algsub(distinct.algebra['type'],distinct.type) +' NOT NULL,' for distinct in self.distincts])+'''
+    '''.join([''+distinct.name + ' '+_algsub(distinct.algebra['type'],distinct.type) +' /*NOT NULL*/,' for distinct in self.distincts])+'''
     '''
     if self.use_hll else ''
     )+
@@ -284,8 +286,10 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                         distinct.algebra['plus'],
                         self.rollup_table_name,
                         ''+distinct.value,
+                        distinct.algebra['zero'],
                         'excluded',
                         ''+distinct.value,
+                        distinct.algebra['zero'],
                         self.distincts
                     #''+distinct.name+' = '+_algsub(
                         #distinct.algebra['plus'],
@@ -373,10 +377,13 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 '''+
                 ''',
                 '''.join([
+                    #'COALESCE('+
                     _algsub(
                         distinct.algebra['agg'],
                         distinct.value
-                        )+' AS '+''+distinct.name
+                        )
+                    #+','+distinct.algebra['zero']+')'
+                    +' AS '+''+distinct.name
                     for distinct in self.distincts
                     ])
                 if self.use_hll else ''

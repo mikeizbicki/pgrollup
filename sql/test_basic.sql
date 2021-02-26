@@ -81,6 +81,18 @@ select create_rollup(
 select create_rollup(
     'test',
     'test_rollup6',
+    rollups => $$
+        sum(num) as sum,
+        count(*) as count_all,
+        count(num),
+        max(num),
+        min(num)
+    $$
+);
+
+select create_rollup(
+    'test',
+    'test_rollup7',
     wheres => 'num',
     rollups => $$
         topn(name)
@@ -93,6 +105,7 @@ select assert_rollup('test_rollup3');
 select assert_rollup('test_rollup4');
 select assert_rollup('test_rollup5');
 select assert_rollup('test_rollup6');
+select assert_rollup('test_rollup7');
 
 
 insert into test (name,num) values
@@ -130,6 +143,7 @@ select assert_rollup('test_rollup3');
 select assert_rollup('test_rollup4');
 select assert_rollup('test_rollup5');
 select assert_rollup('test_rollup6');
+select assert_rollup('test_rollup7');
 
 select drop_rollup('test_rollup1');
 select drop_rollup('test_rollup2');
@@ -137,5 +151,6 @@ select drop_rollup('test_rollup3');
 select drop_rollup('test_rollup4');
 select drop_rollup('test_rollup5');
 select drop_rollup('test_rollup6');
+select drop_rollup('test_rollup7');
 
 drop table test cascade;

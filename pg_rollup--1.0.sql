@@ -42,20 +42,52 @@ CREATE TABLE algebras (
     type                    TEXT NOT NULL,
     zero                    TEXT NOT NULL,
     plus                    TEXT NOT NULL,
-    view                    TEXT,
-    negate                  TEXT
+    negate                  TEXT,
+    view                    TEXT
 );
 
+-- FIXME:
+-- add support for automatically adding dependent columns
+-- inserting null values can mess things up, especially when it's the first value inserted
 INSERT INTO algebras
-    (name       ,agg                            ,type       ,zero                       ,plus               ,negate ,view)
+    (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
     VALUES
-    ('count'    ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'              ,'-x'   ,'x'),
-    ('avg'      ,'avg(x)'                       ,'FLOAT'    ,'0'                        ,'avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))'              ,'x'   ,'x'),
-    ('sum'      ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'              ,'-x'   ,'x'),
-    ('min'      ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'       ,NULL   ,'x'),
-    ('max'      ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'    ,NULL   ,'x'),
-    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,'topn_add_agg(null)'       ,'topn_union(topn(x),topn(y))'  ,NULL   ,'topn(x,1)'),
-    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'hll(x)||hll(y)'             ,NULL   ,'floor(hll_cardinality(x))');
+    ('count'    ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
+    ('sum'      ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
+    ('min'      ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'         ,NULL   ,'x'),
+    ('max'      ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x'),
+    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,$$'{}'$$                   ,'topn_union(topn(x),topn(y))'  ,NULL   ,'topn(x,1)'),
+    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'hll(x)||hll(y)'               ,NULL   ,'floor(hll_cardinality(x))');
+
+INSERT INTO algebras
+    (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
+    VALUES
+    ( 'avg'
+    , 'avg(x)'
+    , 'FLOAT'
+    , '0'
+    , 'avg(x)*(count(x)/(count(x)+count(y))::FLOAT)+avg(y)*(count(y)/(count(x)+count(y))::FLOAT)'
+    , 'x'
+    , 'x'
+    ),
+    ( 'var_pop'
+    , 'var_pop(x)'
+    , 'FLOAT'
+    , '0'
+    , '(count(x)/(count(x)+count(y)::FLOAT))*(var_pop(x)+(avg(x) - count(x)/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)::FLOAT))*(var_pop(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2)'
+    , 'x'
+    , 'x'
+    ),
+    ( 'var_samp'
+    , 'coalesce(var_samp(x),0)'
+    --, 'var_samp(x)'
+    , 'FLOAT'
+    , '0'
+    --, 'CASE (count(x)+count(y)) WHEN 0 THEN 0 ELSE CASE (count(x)+count(y)-1) WHEN 0 THEN 0 ELSE (count(x)/(count(x)+count(y)-1::FLOAT))*(((count(x)-1)/(count(x)::FLOAT))*var_samp(x)+(avg(x) - count(x)/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)-1::FLOAT))*(((count(y)-1)/(count(y)::FLOAT))*var_samp(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2) END END'
+    , '(count(x)/(count(x)+count(y)-1::FLOAT))*(((count(x)-1)/(count(x)::FLOAT))*var_samp(x)+(avg(x) - count(x)/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)-1::FLOAT))*(((count(y)-1)/(count(y)::FLOAT))*var_samp(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2)'
+    , 'x'
+    , 'x'
+    );
 
     --('hll'      ,'hll_add_agg(x)'  ,'hll'      ,'hll_hash_any(x)'  ,'hll_empty()'  ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
     --('tdigest'  ,'tdigest(x,100)'               ,'tdigest'  ,'null'         ,'greatest(x,y)'    ,NULL   ,'tdigest_percentile(x,0.50)'),
