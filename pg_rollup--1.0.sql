@@ -1,6 +1,7 @@
 \echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
 
 
+
 /*
 CREATE OR REPLACE FUNCTION hll_hash_anynull(a anyelement) RETURNS hll_hashval AS $$
     SELECT COALESCE(hll_hash_any(a), 0::hll_hashval);
@@ -49,15 +50,27 @@ CREATE TABLE algebras (
 -- FIXME:
 -- add support for automatically adding dependent columns
 -- inserting null values can mess things up, especially when it's the first value inserted
+
+/*
+ * postgres-native algebras
+ *
+ * FIXME: the following aggregate functions could be implemented, but are not
+ * bit_and
+ * bit_or
+ * bool_and
+ * bool_or
+ * stddev
+ * stddev_samp
+ * stddev_pop
+ */
+
 INSERT INTO algebras
-    (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
+    (name           ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
     VALUES
-    ('count'    ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
-    ('sum'      ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
-    ('min'      ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'         ,NULL   ,'x'),
-    ('max'      ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x'),
-    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,$$'{}'$$                   ,'topn_union(topn(x),topn(y))'  ,NULL   ,'topn(x,1)'),
-    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'hll(x)||hll(y)'               ,NULL   ,'floor(hll_cardinality(x))');
+    ('count'        ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
+    ('sum'          ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
+    ('min'          ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'         ,NULL   ,'x'),
+    ('max'          ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x'),
 
 INSERT INTO algebras
     (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
@@ -80,36 +93,57 @@ INSERT INTO algebras
     ),
     ( 'var_samp'
     , 'coalesce(var_samp(x),0)'
-    --, 'var_samp(x)'
     , 'FLOAT'
     , '0'
-    --, 'CASE (count(x)+count(y)) WHEN 0 THEN 0 ELSE CASE (count(x)+count(y)-1) WHEN 0 THEN 0 ELSE (count(x)/(count(x)+count(y)-1::FLOAT))*(((count(x)-1)/(count(x)::FLOAT))*var_samp(x)+(avg(x) - count(x)/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)-1::FLOAT))*(((count(y)-1)/(count(y)::FLOAT))*var_samp(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2) END END'
     , '(count(x)/(count(x)+count(y)-1::FLOAT))*(((count(x)-1)/(count(x)::FLOAT))*var_samp(x)+(avg(x) - count(x)/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)-1::FLOAT))*(((count(y)-1)/(count(y)::FLOAT))*var_samp(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2)'
     , 'x'
     , 'x'
     );
 
-    --('hll'      ,'hll_add_agg(x)'  ,'hll'      ,'hll_hash_any(x)'  ,'hll_empty()'  ,'x||y'             ,NULL   ,'floor(hll_cardinality(x))');
-    --('tdigest'  ,'tdigest(x,100)'               ,'tdigest'  ,'null'         ,'greatest(x,y)'    ,NULL   ,'tdigest_percentile(x,0.50)'),
+/*
+ * citus libraries
+ */
+INSERT INTO algebras
+    (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
+    VALUES
+    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,$$'{}'$$                   ,'topn_union(topn(x),topn(y))'  ,NULL   ,'topn(x,1)'),
+    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'hll(x)||hll(y)'               ,NULL   ,'round(hll_cardinality(x))');
+
+
+/*
+ * https://pgxn.org/dist/datasketches/1.2.0/
+ */
+INSERT INTO algebras
+    (name           ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
+    VALUES
+    ('theta_sketch' ,'theta_sketch_build(x)' , 'theta_sketch','theta_sketch_build(null::int)'      ,'theta_sketch_union(theta_sketch(x),theta_sketch(y))'              , NULL   ,'round(theta_sketch_get_estimate(x))'),-- FIXME: has subtract, but no negate
+    ('kll_float_sketch' ,'kll_float_sketch_build(x)' , 'kll_float_sketch','kll_float_sketch_build(null::int)'      ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'              , NULL   ,'kll_float_sketch_get_quantiles(x,ARRAY[0, 0.25, 0.5, 0.75, 1])');
+
+    --('hll_sketch' ,'hll_sketch_union(hll_sketch_build(x))' , 'hll_sketch','hll_sketch_build(null::int)'      ,'hll_sketch_union(x,y)'              , NULL   ,'round(hll_sketch_get_estimate(x))'),-- FIXME: plus doesn't work
+    --('cpc_sketch'   ,'cpc_sketch_union(cpc_sketch_build(x))' , 'cpc_sketch','cpc_sketch_build(null::int)'      ,'cpc_sketch_union(x,y)'            ,  NULL   ,'round(cpc_sketch_get_estimate(x))'); -- FIXME: plus doesn't work; maybe it can be rewritten as an aggregate?
+
+/*
+CREATE OR REPLACE FUNCTION kll_float_sketch_union(a any, b any) RETURNS unknown AS $$
+--CREATE OR REPLACE FUNCTION kll_float_sketch_union(a kll_float_sketch, b kll_float_sketch) RETURNS kll_float_sketch AS $$
+    --SELECT COALESCE(hll_hash_any(a), 0::hll_hashval);
+    --select * from (select kll_float_sketch_build(1::real) as sketch union all select kll_float_sketch_build(null::real)) t;
+    select kll_float_sketch_merge(sketch) from (select a as sketch union all select b) t;
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+*/
+
     
-    /*
-
-    bit_and
-    bit_or
-    bool_and
-    bool_or
-
-    https://pgxn.org/dist/datasketches/1.2.0/
-    https://github.com/tvondra/tdigest
-
-    stddev
-    higher order moments?
-    https://madlib.apache.org/docs/master/group__grp__sketches.html
-    https://github.com/ozturkosu/cms_topn  <-- doesn't build on postgres:12,10
-    OLS
-    convex optimizations / online learning
-    */
-
+/*
+ * Notes on other libraries:
+ *
+ * Apache MADLib: https://madlib.apache.org/docs/master/group__grp__sketches.html
+ * Provides sketch datastructures, but they have no union
+ *
+ * https://github.com/ozturkosu/cms_topn
+ * doesn't build on postgres:12,10; appears abandoned
+ *
+ * https://github.com/tvondra/tdigest
+ * no function for merging tdigests
+ */
 
 --------------------------------------------------------------------------------
 

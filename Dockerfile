@@ -57,6 +57,16 @@ RUN cd /tmp \
  && make install \
  && rm -rf /tmp/postgresql-topn
 
+# install datasketches
+RUN apt-get update && apt-get install -y wget zip
+RUN cd /tmp \
+ && wget http://api.pgxn.org/dist/datasketches/1.3.0/datasketches-1.3.0.zip \
+ && unzip datasketches-1.3.0.zip \
+ && cd datasketches-1.3.0 \
+ && make \
+ && (make install || true) \
+ && rm -rf /tmp/datasketches-1.3.0
+
 # create a tablespace directory for the testcases
 RUN mkdir /tmp/tablespace \
  && chown postgres /tmp/tablespace
