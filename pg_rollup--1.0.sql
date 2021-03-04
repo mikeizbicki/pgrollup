@@ -48,7 +48,6 @@ CREATE TABLE algebras (
 );
 
 -- FIXME:
--- add support for automatically adding dependent columns
 -- inserting null values can mess things up, especially when it's the first value inserted
 
 /*
@@ -59,6 +58,7 @@ CREATE TABLE algebras (
  * bit_or
  * bool_and
  * bool_or
+ * variance  *** 
  * stddev
  * stddev_samp
  * stddev_pop
@@ -70,7 +70,7 @@ INSERT INTO algebras
     ('count'        ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
     ('sum'          ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
     ('min'          ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'         ,NULL   ,'x'),
-    ('max'          ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x'),
+    ('max'          ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x');
 
 INSERT INTO algebras
     (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
@@ -386,6 +386,21 @@ RETURNS VOID AS $$
             sql = f"select * from algebras where name='{algebra}';"
             algebra_dictionary = plpy.execute(sql)[0]
             ret.append(pg_rollup.Key(value,type,name,algebra_dictionary))
+
+            # add dependencies to ks if they are not present
+            deps = []
+            for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['plus']):
+                deps.append(match.group(1))
+            deps = set(deps)
+            deps.remove(algebra)
+            for dep in deps:
+                matched = False
+                for k2 in ks:
+                    if f'{dep}({value})' in k2:
+                        matched = True
+                        break
+                if not matched:
+                    ks.append(f'{dep}({value})')
 
         # if there are any duplicate names, throw an error
         names = [k.name for k in ret]
