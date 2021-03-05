@@ -130,23 +130,24 @@ INSERT INTO algebras
 
 
 /*
- * https://pgxn.org/dist/datasketches/1.2.0/
- * this library would be really great to have, but it's not well documented and has lots of missing features and bugs;
- * by default, these functions are not included.
+ * https://pgxn.org/dist/datasketches/
  */
 
--- NOTE: This function is needed for merging kll_float_sketch
-/*
+do $do$
+DECLARE
+    has_extension BOOLEAN;
+BEGIN
+SELECT true FROM pg_extension INTO has_extension WHERE extname='datasketches';
+IF has_extension THEN
+
 CREATE OR REPLACE FUNCTION kll_float_sketch_union(a kll_float_sketch, b kll_float_sketch) RETURNS kll_float_sketch AS $$
     select kll_float_sketch_merge(sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 
 CREATE OR REPLACE FUNCTION frequent_strings_sketch_union(a frequent_strings_sketch, b frequent_strings_sketch) RETURNS frequent_strings_sketch AS $$
-    select frequent_strings_sketch_union(sketch) from (select a as sketch union all select b) t;
+    select frequent_strings_sketch_merge(9,sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
-*/
 
-/*
 INSERT INTO algebras
     (name,agg,type,zero,plus,negate,view)
     VALUES
@@ -156,7 +157,8 @@ INSERT INTO algebras
     ,'kll_float_sketch_build(null::int)'
     ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'
     ,NULL
-    ,'kll_float_sketch_get_quantiles(x,ARRAY[0, 0.25, 0.5, 0.75, 1])'
+    ,'kll_float_sketch_get_quantile(x,0.5)'
+    --,'kll_float_sketch_get_quantiles(x,ARRAY[0, 0.25, 0.5, 0.75, 1])'
     ),
     ('frequent_strings_sketch'
     ,'frequent_strings_sketch_build(9,x)'
@@ -164,10 +166,11 @@ INSERT INTO algebras
     ,'frequent_strings_sketch_build(9,null::int)'
     ,'frequent_strings_sketch_union(frequent_strings_sketch(x),frequent_strings_sketch(y))'
     ,NULL
-    ,'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'
+    ,$$'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'$$
     );
 
-    -- FIXME: plus doesn't give errors, but gives really bad results
+    /*
+    -- FIXME: plus doesn't throw an error, but gives really bad results, possibly due to an uncaught error
     -- FIXME: the datasketches library implements an intersection function, but no negate function;
     ('theta_sketch'
     ,'theta_sketch_build(x)'
@@ -177,7 +180,7 @@ INSERT INTO algebras
     ,'round(theta_sketch_get_estimate(x))'
     ),
  
-    -- FIXME: plus errors, this is due to a problem in the datasketches library and not something that can be fixed locally
+    -- FIXME: plus throws an error, this is due to a problem in the datasketches library and not something that can be fixed locally
     ('hll_sketch'
     ,'hll_sketch_union(hll_sketch_build(x))'
     ,'hll_sketch'
@@ -187,7 +190,7 @@ INSERT INTO algebras
     ,'round(hll_sketch_get_estimate(x))'
     ),
 
-    -- FIXME: plus errors, this is due to a problem in the datasketches library and not something that can be fixed locally
+    -- FIXME: plus throws an error, this is due to a problem in the datasketches library and not something that can be fixed locally
     ('cpc_sketch'
     ,'cpc_sketch_union(cpc_sketch_build(x))'
     ,'cpc_sketch','cpc_sketch_build(null::int)'
@@ -197,6 +200,9 @@ INSERT INTO algebras
     );
     */
 
+END IF;
+END
+$do$ language 'plpgsql';
 
 /*
  * https://github.com/tvondra/tdigest
@@ -207,20 +213,23 @@ DECLARE
 BEGIN
 SELECT true FROM pg_extension INTO has_extension WHERE extname='tdigest';
 IF has_extension THEN
-    CREATE OR REPLACE FUNCTION tdigest_union(a tdigest, b tdigest) RETURNS tdigest AS $$
-        select tdigest(sketch) from (select a as sketch union all select b) t;
-    $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
-    INSERT INTO algebras
-        (name,agg,type,zero,plus,negate,view)
-        VALUES
-        ('tdigest'
-        ,'tdigest(x,100)'
-        ,'tdigest'
-        ,'tdigest(null,100)'
-        ,'tdigest_union(tdigest(x),tdigest(y))'
-        ,NULL
-        ,'tdigest_percentile(x,0.5)'
-        );
+
+CREATE OR REPLACE FUNCTION tdigest_union(a tdigest, b tdigest) RETURNS tdigest AS $$
+    select tdigest(sketch) from (select a as sketch union all select b) t;
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+
+INSERT INTO algebras
+    (name,agg,type,zero,plus,negate,view)
+    VALUES
+    ('tdigest'
+    ,'tdigest(x,100)'
+    ,'tdigest'
+    ,'tdigest(null,100)'
+    ,'tdigest_union(tdigest(x),tdigest(y))'
+    ,NULL
+    ,'tdigest_percentile(x,0.5)'
+    );
+
 END IF;
 END
 $do$ language 'plpgsql';
