@@ -1,6 +1,23 @@
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
 NOTICE:  extension "pg_rollup" already exists, skipping
+--
+-- this function removes duplicates from an array,
+-- and can be used to modify how rollups work with arrays
+--
+CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
+SELECT ARRAY(SELECT DISTINCT unnest(a));
+$$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
+do $$
+BEGIN
+    assert( array_uniq('{}'::INT[]) = '{}');
+    assert( array_uniq('{1,1,1,1}'::INT[]) = '{1}');
+    assert( array_uniq('{1,1,2,3}'::INT[]) = '{1,2,3}');
+    assert( array_uniq('{1,2,3,1}'::INT[]) = '{1,2,3}');
+    assert( array_uniq('{NULL,NULL}'::INT[]) = '{NULL}');
+    assert( array_uniq(NULL::INT[]) IS NULL);
+END;
+$$;
 create temporary table arrtest (
     id serial primary key,
     a int,

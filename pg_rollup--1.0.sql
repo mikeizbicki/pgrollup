@@ -1,22 +1,5 @@
 \echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
 
-
-CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
-SELECT ARRAY(SELECT DISTINCT unnest(a));
-$$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
-
-do $$
-BEGIN
-    assert( array_uniq('{}'::INT[]) = '{}');
-    assert( array_uniq('{1,1,1,1}'::INT[]) = '{1}');
-    assert( array_uniq('{1,1,2,3}'::INT[]) = '{1,2,3}');
-    assert( array_uniq('{1,2,3,1}'::INT[]) = '{1,2,3}');
-    assert( array_uniq('{NULL,NULL}'::INT[]) = '{NULL}');
-    assert( array_uniq(NULL::INT[]) IS NULL);
-END;
-$$;
-
-
 --------------------------------------------------------------------------------
 
 CREATE TABLE algebras (
