@@ -13,9 +13,6 @@ CREATE TABLE algebras (
     view                    TEXT
 );
 
--- FIXME:
--- inserting null values can mess things up, especially when it's the first value inserted
-
 /*
  * postgres-native algebras
  *
@@ -162,7 +159,7 @@ INSERT INTO algebras
     ('kll_float_sketch'
     ,'kll_float_sketch_build(x)'
     ,'kll_float_sketch'
-    ,'kll_float_sketch_build(null::int)'
+    ,'null'
     ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'
     ,NULL
     ,'kll_float_sketch_get_quantile(x,0.5)'
@@ -171,7 +168,7 @@ INSERT INTO algebras
     ('frequent_strings_sketch'
     ,'frequent_strings_sketch_build(9,x)'
     ,'frequent_strings_sketch'
-    ,'frequent_strings_sketch_build(9,null::int)'
+    ,'null'
     ,'frequent_strings_sketch_union(frequent_strings_sketch(x),frequent_strings_sketch(y))'
     ,NULL
     ,$$'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'$$
@@ -232,7 +229,7 @@ INSERT INTO algebras
     ('tdigest'
     ,'tdigest(x,100)'
     ,'tdigest'
-    ,'tdigest(null,100)'
+    ,'null' --,'tdigest(null,100)'
     ,'tdigest_union(tdigest(x),tdigest(y))'
     ,NULL
     ,'tdigest_percentile(x,0.5)'
@@ -677,11 +674,17 @@ RETURNS NULL ON NULL INPUT;
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
     sql = f'select * from {rollup_name}_groundtruth except select * from {rollup_name};';
-    res = plpy.execute(sql)
-    assert len(res)==0
+    res1 = plpy.execute(sql)
     sql = f'select * from {rollup_name} except select * from {rollup_name}_groundtruth;';
-    res = plpy.execute(sql)
-    assert len(res)==0
+    res2 = plpy.execute(sql)
+
+    for row in res1:
+        plpy.warning(f'result only in {rollup_name}_groundtruth: {str(row)}')
+    for row in res2:
+        plpy.warning(f'result only in {rollup_name}: {str(row)}')
+
+    assert len(res1)==0
+    assert len(res2)==0
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
 
 
