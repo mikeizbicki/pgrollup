@@ -8,10 +8,6 @@
  * therefore, there is no need to modify this file when adding a new algebra.
  */
 create or replace language plpython3u;
-create extension if not exists hll;
-NOTICE:  extension "hll" already exists, skipping
-create extension if not exists topn;
-NOTICE:  extension "topn" already exists, skipping
 create extension if not exists pg_rollup;
 NOTICE:  extension "pg_rollup" already exists, skipping
 create temporary table testdeps (

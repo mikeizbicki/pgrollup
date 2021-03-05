@@ -1,6 +1,6 @@
 create or replace language plpython3u;
-create extension if not exists hll;
 create extension if not exists pg_rollup;
+
 create temporary table arrtest (
     id serial primary key,
     a int,
@@ -8,6 +8,7 @@ create temporary table arrtest (
     c text,
     d text[]
 );
+
 insert into arrtest (a,b,c,d) values
     (0, '{              }', 'foo', '{1,2,3,4       }'),
     (0, '{              }', 'foo', '{2,2,2         }'),
@@ -24,6 +25,7 @@ insert into arrtest (a,b,c,d) values
     (2, NULL              , 'baz', '{NULL,5,6      }'),
     (2, NULL              , 'foo', '{NULL,NULL     }'),
     (3, NULL              , 'foo', NULL              );
+
 select create_rollup(
     'arrtest',
     'arrtest_rollup0',
@@ -31,13 +33,6 @@ select create_rollup(
         unnest(b)
     $$
 );
-NOTICE:  view "arrtest_rollup0_groundtruth_raw" will be a temporary view
-NOTICE:  view "arrtest_rollup0" will be a temporary view
-NOTICE:  view "arrtest_rollup0_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'arrtest',
@@ -46,13 +41,6 @@ select create_rollup(
         unnest(array_uniq(b))
     $$
 );
-NOTICE:  view "arrtest_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "arrtest_rollup1" will be a temporary view
-NOTICE:  view "arrtest_rollup1_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'arrtest',
@@ -61,13 +49,6 @@ select create_rollup(
         unnest(array_uniq(d))
     $$
 );
-NOTICE:  view "arrtest_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "arrtest_rollup2" will be a temporary view
-NOTICE:  view "arrtest_rollup2_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'arrtest',
@@ -77,13 +58,6 @@ select create_rollup(
         unnest(array_uniq(d)) AS d
     $$
 );
-NOTICE:  view "arrtest_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "arrtest_rollup3" will be a temporary view
-NOTICE:  view "arrtest_rollup3_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'arrtest',
@@ -95,13 +69,6 @@ select create_rollup(
         c
     $$
 );
-NOTICE:  view "arrtest_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "arrtest_rollup4" will be a temporary view
-NOTICE:  view "arrtest_rollup4_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'arrtest',
@@ -115,13 +82,6 @@ select create_rollup(
         hll(c)
     $$
 );
-NOTICE:  view "arrtest_rollup5_groundtruth_raw" will be a temporary view
-NOTICE:  view "arrtest_rollup5" will be a temporary view
-NOTICE:  view "arrtest_rollup5_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 insert into arrtest (a,b,c,d) values
     (0, '{              }', 'foo', '{1,2,3,4       }'),
@@ -139,39 +99,11 @@ insert into arrtest (a,b,c,d) values
     (2, NULL              , 'baz', '{NULL,5,6      }'),
     (2, NULL              , 'foo', '{NULL,NULL     }'),
     (3, NULL              , 'foo', NULL              );
+
+
 select assert_rollup('arrtest_rollup0');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('arrtest_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('arrtest_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('arrtest_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('arrtest_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('arrtest_rollup5');
- assert_rollup 
----------------
- 
-(1 row)
-

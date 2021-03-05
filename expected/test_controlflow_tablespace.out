@@ -1,15 +1,14 @@
 create or replace language plpython3u;
-create extension if not exists hll;
 create extension if not exists pg_rollup;
-
+NOTICE:  extension "pg_rollup" already exists, skipping
+SET client_min_messages TO WARNING;
+drop tablespace if exists example;
 create tablespace example location '/tmp/tablespace';
-
 create temporary table test (
     id serial primary key,
     name text,
     num int
 );
-
 insert into test (name,num) values
     ('alice', 1),
     ('alice', 2),
@@ -37,12 +36,15 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-
 select create_rollup(
     'test',
     'test_rollup1',
     wheres => 'name',
     tablespace => 'example'
 );
+ create_rollup 
+---------------
+ 
+(1 row)
 
 drop table test cascade;

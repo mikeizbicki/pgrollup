@@ -1,13 +1,12 @@
 create or replace language plpython3u;
-create extension if not exists hll;
-NOTICE:  extension "hll" already exists, skipping
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
+
 create temporary table test (
     id serial primary key,
     name text,
     num int
 );
+
 insert into test (name,num) values
     ('alice', 1),
     ('alice', 2),
@@ -35,6 +34,7 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
 select create_rollup(
     'test',
     'test_rollup1',
@@ -42,13 +42,6 @@ select create_rollup(
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup1" will be a temporary view
-NOTICE:  view "test_rollup1_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'test',
@@ -57,44 +50,24 @@ select create_rollup(
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup2" will be a temporary view
-NOTICE:  view "test_rollup2_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'test',
     'test_rollup3',
     wheres => 'name',
-    rollups => 'hll(num)',
+    rollups => 'count(num)',
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup3" will be a temporary view
-NOTICE:  view "test_rollup3_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'test',
     'test_rollup4',
-    rollups => 'hll(name),hll(num)',
+    rollups => 'count(name),count(num)',
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup4" will be a temporary view
-NOTICE:  view "test_rollup4_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
+
 
 insert into test (name,num) values
     ('alice', 1),
@@ -123,353 +96,76 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-select do_rollup('test_rollup1');
- do_rollup 
------------
- (27,52)
-(1 row)
-
-select do_rollup('test_rollup2');
- do_rollup 
------------
- (27,52)
-(1 row)
-
-select do_rollup('test_rollup3');
- do_rollup 
------------
- (27,52)
-(1 row)
-
-select do_rollup('test_rollup4');
- do_rollup 
------------
- (27,52)
-(1 row)
-
-select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
-
-insert into test (name,num) values
-    ('alice', 1),
-    ('alice', 2),
-    ('alice', 3),
-    ('alice', 4),
-    ('alice', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 3),
-    ('charlie', NULL),
-    ('dave', 4),
-    ('elliot', 5),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 8),
-    (NULL, 9),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL);
-select do_rollup('test_rollup1');
- do_rollup 
------------
- (53,78)
-(1 row)
-
-select do_rollup('test_rollup2');
- do_rollup 
------------
- (53,78)
-(1 row)
-
-select do_rollup('test_rollup3');
- do_rollup 
------------
- (53,78)
-(1 row)
-
-select do_rollup('test_rollup4');
- do_rollup 
------------
- (53,78)
-(1 row)
-
-select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
 
 select do_rollup('test_rollup1');
- do_rollup 
------------
- (79,78)
-(1 row)
-
 select do_rollup('test_rollup2');
- do_rollup 
------------
- (79,78)
-(1 row)
-
 select do_rollup('test_rollup3');
- do_rollup 
------------
- (79,78)
-(1 row)
-
 select do_rollup('test_rollup4');
- do_rollup 
------------
- (79,78)
-(1 row)
 
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
+
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
+
 
 select do_rollup('test_rollup1');
- do_rollup 
------------
- (79,78)
-(1 row)
-
 select do_rollup('test_rollup2');
- do_rollup 
------------
- (79,78)
-(1 row)
-
 select do_rollup('test_rollup3');
- do_rollup 
------------
- (79,78)
-(1 row)
-
 select do_rollup('test_rollup4');
- do_rollup 
------------
- (79,78)
-(1 row)
 
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
 
-insert into test (name,num) values
-    ('alice', 1),
-    ('alice', 2),
-    ('alice', 3),
-    ('alice', 4),
-    ('alice', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 3),
-    ('charlie', NULL),
-    ('dave', 4),
-    ('elliot', 5),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 8),
-    (NULL, 9),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL);
-insert into test (name,num) values
-    ('alice', 1),
-    ('alice', 2),
-    ('alice', 3),
-    ('alice', 4),
-    ('alice', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 3),
-    ('charlie', NULL),
-    ('dave', 4),
-    ('elliot', 5),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 8),
-    (NULL, 9),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL);
-insert into test (name,num) values
-    ('alice', 1),
-    ('alice', 2),
-    ('alice', 3),
-    ('alice', 4),
-    ('alice', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('bill', 5),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 1),
-    ('charlie', 3),
-    ('charlie', NULL),
-    ('dave', 4),
-    ('elliot', 5),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 1),
-    (NULL, 8),
-    (NULL, 9),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL),
-    (NULL, NULL);
 select do_rollup('test_rollup1');
- do_rollup 
------------
- (79,156)
-(1 row)
-
 select do_rollup('test_rollup2');
- do_rollup 
------------
- (79,156)
-(1 row)
-
 select do_rollup('test_rollup3');
- do_rollup 
------------
- (79,156)
-(1 row)
-
 select do_rollup('test_rollup4');
- do_rollup 
------------
- (79,156)
-(1 row)
 
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
+
+select do_rollup('test_rollup1');
+select do_rollup('test_rollup2');
+select do_rollup('test_rollup3');
+select do_rollup('test_rollup4');
+
+select assert_rollup('test_rollup1');
+select assert_rollup('test_rollup2');
+select assert_rollup('test_rollup3');
+select assert_rollup('test_rollup4');
+
 
 insert into test (name,num) values
     ('alice', 1),
@@ -498,29 +194,6 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-select rollup_mode('test_rollup1','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup3','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','trigger');
- rollup_mode 
--------------
- 
-(1 row)
 
 insert into test (name,num) values
     ('alice', 1),
@@ -549,173 +222,140 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
+
+select do_rollup('test_rollup1');
+select do_rollup('test_rollup2');
+select do_rollup('test_rollup3');
+select do_rollup('test_rollup4');
+
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
 
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup3','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','manual');
- rollup_mode 
--------------
- 
-(1 row)
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
 
 select rollup_mode('test_rollup1','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup2','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup3','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup4','trigger');
- rollup_mode 
--------------
- 
-(1 row)
+
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
+
+select assert_rollup('test_rollup1');
+select assert_rollup('test_rollup2');
+select assert_rollup('test_rollup3');
+select assert_rollup('test_rollup4');
+
+select rollup_mode('test_rollup1','manual');
+select rollup_mode('test_rollup2','manual');
+select rollup_mode('test_rollup3','manual');
+select rollup_mode('test_rollup4','manual');
 
 select rollup_mode('test_rollup1','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup2','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup3','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup4','trigger');
- rollup_mode 
--------------
- 
-(1 row)
 
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup3','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup3','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
+select rollup_mode('test_rollup1','trigger');
+select rollup_mode('test_rollup2','trigger');
 select rollup_mode('test_rollup3','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup4','trigger');
- rollup_mode 
--------------
- 
-(1 row)
+
+select rollup_mode('test_rollup1','manual');
+select rollup_mode('test_rollup2','manual');
+select rollup_mode('test_rollup3','manual');
+select rollup_mode('test_rollup4','manual');
+
+select rollup_mode('test_rollup1','manual');
+select rollup_mode('test_rollup2','manual');
+select rollup_mode('test_rollup3','manual');
+select rollup_mode('test_rollup4','manual');
+
+select rollup_mode('test_rollup1','manual');
+select rollup_mode('test_rollup2','manual');
+select rollup_mode('test_rollup3','trigger');
+select rollup_mode('test_rollup4','trigger');
 
 insert into test (name,num) values
     ('alice', 1),
@@ -744,77 +384,21 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
 select do_rollup('test_rollup1');
- do_rollup 
------------
- (209,234)
-(1 row)
-
 select do_rollup('test_rollup2');
- do_rollup 
------------
- (209,234)
-(1 row)
-
 select do_rollup('test_rollup3');
- do_rollup 
------------
- (,)
-(1 row)
-
 select do_rollup('test_rollup4');
- do_rollup 
------------
- (,)
-(1 row)
 
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
 
 select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup3','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
 select rollup_mode('test_rollup4','manual');
- rollup_mode 
--------------
- 
-(1 row)
 
 insert into test (name,num) values
     ('alice', 1),
@@ -843,229 +427,50 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (235,240)
-(1 row)
-
-select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (235,240)
-(1 row)
-
-select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (235,240)
-(1 row)
-
-select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (235,240)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (241,246)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (241,246)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (241,246)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (241,246)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (247,252)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (247,252)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (247,252)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (247,252)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (253,258)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (253,258)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (253,258)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (253,258)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (259,260)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (259,260)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (259,260)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (259,260)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (261,260)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (261,260)
-(1 row)
 
 select do_rollup('test_rollup1',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup2',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup3',5);
- do_rollup 
------------
- (261,260)
-(1 row)
-
 select do_rollup('test_rollup4',5);
- do_rollup 
------------
- (261,260)
-(1 row)
+
+select do_rollup('test_rollup1',5);
+select do_rollup('test_rollup2',5);
+select do_rollup('test_rollup3',5);
+select do_rollup('test_rollup4',5);
 
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup3');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup4');
- assert_rollup 
----------------
- 
-(1 row)
 
 drop table test cascade;
-NOTICE:  drop cascades to 8 other objects
-DETAIL:  drop cascades to view test_rollup1_groundtruth_raw
-drop cascades to view test_rollup1_groundtruth
-drop cascades to view test_rollup2_groundtruth_raw
-drop cascades to view test_rollup2_groundtruth
-drop cascades to view test_rollup3_groundtruth_raw
-drop cascades to view test_rollup3_groundtruth
-drop cascades to view test_rollup4_groundtruth_raw
-drop cascades to view test_rollup4_groundtruth

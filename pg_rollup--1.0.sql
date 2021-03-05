@@ -1,23 +1,6 @@
 \echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
 
 
-
-/*
-CREATE OR REPLACE FUNCTION hll_hash_anynull(a anyelement) RETURNS hll_hashval AS $$
-    SELECT COALESCE(hll_hash_any(a), 0::hll_hashval);
-$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
-
-do $$
-BEGIN
-    assert( hll_hash_anynull(null::integer) = 0::hll_hashval);
-    assert( hll_hash_anynull(null::text) = 0::hll_hashval);
-    assert( hll_hash_anynull(123) = hll_hash_any(123));
-    assert( hll_hash_anynull('123'::text) = hll_hash_any('123'::text));
-END;
-$$;
-*/
-
-
 CREATE OR REPLACE FUNCTION array_uniq(a anyarray) RETURNS anyarray AS $$
 SELECT ARRAY(SELECT DISTINCT unnest(a));
 $$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
@@ -120,14 +103,56 @@ INSERT INTO algebras
  */
 
 /*
- * citus libraries
+ * https://github.com/citusdata/postgresql-topn
  */
-INSERT INTO algebras
-    (name       ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
-    VALUES
-    ('topn'     ,'topn_add_agg(x)'              ,'JSONB'    ,$$'{}'$$                   ,'topn_union(topn(x),topn(y))'  ,NULL   ,'topn(x,1)'),
-    ('hll'      ,'hll_add_agg(hll_hash_any(x))' ,'hll'      ,'hll_empty()'              ,'hll(x)||hll(y)'               ,NULL   ,'round(hll_cardinality(x))');
+do $do$
+DECLARE
+    has_extension BOOLEAN;
+BEGIN
+SELECT true FROM pg_extension INTO has_extension WHERE extname='topn';
+IF has_extension THEN
 
+INSERT INTO algebras
+    (name,agg,type,zero,plus,negate,view)
+    VALUES
+    ('topn'
+    ,'topn_add_agg(x)'
+    ,'JSONB'
+    ,$$'{}'$$
+    ,'topn_union(topn(x),topn(y))'
+    ,NULL
+    ,'topn(x,1)'
+    );
+
+END IF;
+END
+$do$ language 'plpgsql';
+
+/*
+ * https://github.com/citusdata/postgresql-hll
+ */
+do $do$
+DECLARE
+    has_extension BOOLEAN;
+BEGIN
+SELECT true FROM pg_extension INTO has_extension WHERE extname='hll';
+IF has_extension THEN
+
+INSERT INTO algebras
+    (name,agg,type,zero,plus,negate,view)
+    VALUES
+    ('hll'
+    ,'hll_add_agg(hll_hash_any(x))'
+    ,'hll'
+    ,'hll_empty()'
+    ,'hll(x)||hll(y)'
+    ,NULL
+    ,'round(hll_cardinality(x))'
+    );
+
+END IF;
+END
+$do$ language 'plpgsql';
 
 /*
  * https://pgxn.org/dist/datasketches/
@@ -435,7 +460,7 @@ RETURNS VOID AS $$
                 else:
                     value = l.strip()
                     name = r.strip()
-                algebra = 'hll'
+                algebra = 'count' # FIXME: should be None?
             else:
                 # FIXME: move the logic above into the parse_algebra function
                 d = pg_rollup.parse_algebra(k)

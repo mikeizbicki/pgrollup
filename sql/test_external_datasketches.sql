@@ -29,12 +29,12 @@ select create_rollup(
     $$
 );
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.1);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
 
 insert into dstest (a) (select * from generate_series(0,10000));
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.1);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
 
 insert into dstest (a) (select * from generate_series(0,10000));
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.1);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);

@@ -34,21 +34,21 @@ select create_rollup(
  
 (1 row)
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.1);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  assert_rollup_relative_error 
 ------------------------------
  
 (1 row)
 
 insert into dstest (a) (select * from generate_series(0,10000));
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.1);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  assert_rollup_relative_error 
 ------------------------------
  
 (1 row)
 
 insert into dstest (a) (select * from generate_series(0,10000));
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.1);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  assert_rollup_relative_error 
 ------------------------------
  

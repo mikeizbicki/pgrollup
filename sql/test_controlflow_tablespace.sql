@@ -1,14 +1,16 @@
 create or replace language plpython3u;
-create extension if not exists hll;
-NOTICE:  extension "hll" already exists, skipping
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
+SET client_min_messages TO WARNING;
+
+drop tablespace if exists example;
 create tablespace example location '/tmp/tablespace';
+
 create temporary table test (
     id serial primary key,
     name text,
     num int
 );
+
 insert into test (name,num) values
     ('alice', 1),
     ('alice', 2),
@@ -36,21 +38,12 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
 select create_rollup(
     'test',
     'test_rollup1',
     wheres => 'name',
     tablespace => 'example'
 );
-NOTICE:  view "test_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup1" will be a temporary view
-NOTICE:  view "test_rollup1_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 drop table test cascade;
-NOTICE:  drop cascades to 2 other objects
-DETAIL:  drop cascades to view test_rollup1_groundtruth_raw
-drop cascades to view test_rollup1_groundtruth
