@@ -526,10 +526,12 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
 
 def drop_rollup_str(rollup):
     rollup_table_name = rollup+'_raw'
-    return ('''
-    DROP TABLE '''+rollup_table_name+''' CASCADE;
-    DROP VIEW '''+rollup+'''_groundtruth CASCADE;
-    DROP FUNCTION '''+rollup_table_name+'''_triggerfunc CASCADE;
+    return (f'''
+    DROP TABLE {rollup_table_name} CASCADE;
+    DROP VIEW IF EXISTS {rollup}_groundtruth CASCADE;
+    DROP VIEW IF EXISTS {rollup}_groundtruth_raw CASCADE;
+    DROP FUNCTION {rollup_table_name}_triggerfunc CASCADE;
+    DELETE FROM pg_rollup WHERE rollup_name='{rollup}';
 ''')
 
 

@@ -279,22 +279,26 @@ INSERT INTO pg_rollup_settings (name,value) VALUES
     ('default_mode','trigger');
 
 /*
- * The pg_rollup table should contain one row per rollup;
- * this event trigger ensures that the row gets deleted when the rollup gets dropped.
+ * Whenever the source table for a rollup is deleted, the rollup should be deleted as well.
+ * This trigger ensures the rollup gets deleted.
+ *
  * FIXME:
  * This trigger doesn't seem to fire when a temporary table is automatically dropped at the end of a session.
- * This can result in a table_name erroneously still existing in the pg_rollup table.
  */
 CREATE OR REPLACE FUNCTION pg_rollup_drop_function()
 RETURNS event_trigger AS $$
 DECLARE
     obj record;
+    rollup record;
 BEGIN
     IF tg_tag LIKE 'DROP%'
     THEN
         FOR obj IN SELECT * FROM pg_event_trigger_dropped_objects()
         LOOP
-            DELETE FROM pg_rollup WHERE table_name=obj.object_name;
+            FOR rollup IN SELECT * FROM pg_rollup WHERE table_name=obj.object_name
+            LOOP
+                PERFORM drop_rollup(rollup.rollup_name);
+            END LOOP;
         END LOOP;
     END IF;
 END;

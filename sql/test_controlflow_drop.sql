@@ -1,10 +1,12 @@
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
+
 create temporary table test (
     id serial primary key,
     name text,
     num int
 );
+
 insert into test (name,num) values
     ('alice', 1),
     ('alice', 2),
@@ -32,43 +34,23 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
 select create_rollup(
     'test',
     'test_rollup1',
     wheres => 'name'
 );
-NOTICE:  view "test_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup1" will be a temporary view
-NOTICE:  view "test_rollup1_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
 
 select create_rollup(
     'test',
     'test_rollup2',
     wheres => 'name,num'
 );
-NOTICE:  view "test_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup2" will be a temporary view
-NOTICE:  view "test_rollup2_groundtruth" will be a temporary view
- create_rollup 
----------------
- 
-(1 row)
+
 
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
+
 
 insert into test (name,num) values
     ('alice', 1),
@@ -97,31 +79,11 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
 select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
 
-delete from test where name='alice';
-delete from test where name is null and num is null;
-select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
-
-select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
+select drop_rollup('test_rollup1');
 
 insert into test (name,num) values
     ('alice', 1),
@@ -150,27 +112,50 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-select assert_rollup('test_rollup1');
- assert_rollup 
----------------
- 
-(1 row)
 
 select assert_rollup('test_rollup2');
- assert_rollup 
----------------
- 
-(1 row)
+
+select drop_rollup('test_rollup2');
+
+select create_rollup(
+    'test',
+    'test_rollup2',
+    wheres => 'name'
+);
+
+select create_rollup(
+    'test',
+    'test_rollup1',
+    wheres => 'name,num'
+);
+
+select assert_rollup('test_rollup1');
+select assert_rollup('test_rollup2');
+
+--FIXME:
+--dropping the rollups when the table drops isn't currently implemented?
 
 drop table test cascade;
-NOTICE:  drop cascades to 4 other objects
-DETAIL:  drop cascades to view test_rollup1_groundtruth_raw
-drop cascades to view test_rollup1_groundtruth
-drop cascades to view test_rollup2_groundtruth_raw
-drop cascades to view test_rollup2_groundtruth
-NOTICE:  drop cascades to view test_rollup1
-NOTICE:  view "test_rollup1_groundtruth" does not exist, skipping
-NOTICE:  view "test_rollup1_groundtruth_raw" does not exist, skipping
-NOTICE:  drop cascades to view test_rollup2
-NOTICE:  view "test_rollup2_groundtruth" does not exist, skipping
-NOTICE:  view "test_rollup2_groundtruth_raw" does not exist, skipping
+
+create temporary table test (
+    id serial primary key,
+    name text,
+    num int
+);
+
+select create_rollup(
+    'test',
+    'test_rollup2',
+    wheres => 'name'
+);
+
+select create_rollup(
+    'test',
+    'test_rollup1',
+    wheres => 'name,num'
+);
+
+select assert_rollup('test_rollup1');
+select assert_rollup('test_rollup2');
+
+drop table test cascade;
