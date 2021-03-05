@@ -112,24 +112,72 @@ INSERT INTO algebras
 
 /*
  * https://pgxn.org/dist/datasketches/1.2.0/
+ * this library would be really great to have, but it's not well documented and has lots of missing features and bugs;
+ * by default, these functions are not included.
  */
-INSERT INTO algebras
-    (name           ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
-    VALUES
-    ('theta_sketch' ,'theta_sketch_build(x)' , 'theta_sketch','theta_sketch_build(null::int)'      ,'theta_sketch_union(theta_sketch(x),theta_sketch(y))'              , NULL   ,'round(theta_sketch_get_estimate(x))'),-- FIXME: has subtract, but no negate
-    ('kll_float_sketch' ,'kll_float_sketch_build(x)' , 'kll_float_sketch','kll_float_sketch_build(null::int)'      ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'              , NULL   ,'kll_float_sketch_get_quantiles(x,ARRAY[0, 0.25, 0.5, 0.75, 1])');
 
-    --('hll_sketch' ,'hll_sketch_union(hll_sketch_build(x))' , 'hll_sketch','hll_sketch_build(null::int)'      ,'hll_sketch_union(x,y)'              , NULL   ,'round(hll_sketch_get_estimate(x))'),-- FIXME: plus doesn't work
-    --('cpc_sketch'   ,'cpc_sketch_union(cpc_sketch_build(x))' , 'cpc_sketch','cpc_sketch_build(null::int)'      ,'cpc_sketch_union(x,y)'            ,  NULL   ,'round(cpc_sketch_get_estimate(x))'); -- FIXME: plus doesn't work; maybe it can be rewritten as an aggregate?
-
+-- NOTE: This function is needed for merging kll_float_sketch
 /*
-CREATE OR REPLACE FUNCTION kll_float_sketch_union(a any, b any) RETURNS unknown AS $$
---CREATE OR REPLACE FUNCTION kll_float_sketch_union(a kll_float_sketch, b kll_float_sketch) RETURNS kll_float_sketch AS $$
-    --SELECT COALESCE(hll_hash_any(a), 0::hll_hashval);
-    --select * from (select kll_float_sketch_build(1::real) as sketch union all select kll_float_sketch_build(null::real)) t;
+CREATE OR REPLACE FUNCTION kll_float_sketch_union(a kll_float_sketch, b kll_float_sketch) RETURNS kll_float_sketch AS $$
     select kll_float_sketch_merge(sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+
+CREATE OR REPLACE FUNCTION frequent_strings_sketch_union(a frequent_strings_sketch, b frequent_strings_sketch) RETURNS frequent_strings_sketch AS $$
+    select frequent_strings_sketch_union(sketch) from (select a as sketch union all select b) t;
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 */
+
+/*
+INSERT INTO algebras
+    (name,agg,type,zero,plus,negate,view)
+    VALUES
+    ('kll_float_sketch'
+    ,'kll_float_sketch_build(x)'
+    ,'kll_float_sketch'
+    ,'kll_float_sketch_build(null::int)'
+    ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'
+    ,NULL
+    ,'kll_float_sketch_get_quantiles(x,ARRAY[0, 0.25, 0.5, 0.75, 1])'
+    ),
+    ('frequent_strings_sketch'
+    ,'frequent_strings_sketch_build(9,x)'
+    ,'frequent_strings_sketch'
+    ,'frequent_strings_sketch_build(9,null::int)'
+    ,'frequent_strings_sketch_union(frequent_strings_sketch(x),frequent_strings_sketch(y))'
+    ,NULL
+    ,'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'
+    );
+
+    -- FIXME: plus doesn't give errors, but gives really bad results
+    -- FIXME: the datasketches library implements an intersection function, but no negate function;
+    ('theta_sketch'
+    ,'theta_sketch_build(x)'
+    ,'theta_sketch','theta_sketch_build(null::int)'
+    ,'theta_sketch_union(theta_sketch(x),theta_sketch(y))'
+    ,NULL
+    ,'round(theta_sketch_get_estimate(x))'
+    ),
+ 
+    -- FIXME: plus errors, this is due to a problem in the datasketches library and not something that can be fixed locally
+    ('hll_sketch'
+    ,'hll_sketch_union(hll_sketch_build(x))'
+    ,'hll_sketch'
+    ,'hll_sketch_build(null::int)'
+    ,'hll_sketch_union(x,y)'
+    ,NULL
+    ,'round(hll_sketch_get_estimate(x))'
+    ),
+
+    -- FIXME: plus errors, this is due to a problem in the datasketches library and not something that can be fixed locally
+    ('cpc_sketch'
+    ,'cpc_sketch_union(cpc_sketch_build(x))'
+    ,'cpc_sketch','cpc_sketch_build(null::int)'
+    ,'cpc_sketch_union(x,y)'
+    ,NULL
+    ,'round(cpc_sketch_get_estimate(x))'
+    );
+    */
+
 
     
 /*
