@@ -100,6 +100,25 @@ INSERT INTO algebras
     , 'x'
     );
 
+--------------------------------------------------------------------------------
+
+/* 
+ * Algebras defined in external libraries goes here.
+ * For each library, we first check if the extension is installed.
+ * Then, we only define the library specific code if the extension actually is installed.
+ * This ensures that the pg_rollup library can work even when these optional dependencies are not met.
+ *
+ * NOTE:
+ * The following libraries have not been included as dependencies for this project,
+ * but they might be included in the future.
+ *
+ * Apache MADLib: https://madlib.apache.org/docs/master/group__grp__sketches.html
+ * Provides sketch datastructures, but they have no union, and I'm not sure how to install it
+ *
+ * https://github.com/ozturkosu/cms_topn
+ * doesn't build on postgres:12,10; appears abandoned
+ */
+
 /*
  * citus libraries
  */
@@ -179,19 +198,32 @@ INSERT INTO algebras
     */
 
 
-    
 /*
- * Notes on other libraries:
- *
- * Apache MADLib: https://madlib.apache.org/docs/master/group__grp__sketches.html
- * Provides sketch datastructures, but they have no union
- *
- * https://github.com/ozturkosu/cms_topn
- * doesn't build on postgres:12,10; appears abandoned
- *
  * https://github.com/tvondra/tdigest
- * no function for merging tdigests
- */
+ */  
+do $do$
+DECLARE
+    has_extension BOOLEAN;
+BEGIN
+SELECT true FROM pg_extension INTO has_extension WHERE extname='tdigest';
+IF has_extension THEN
+    CREATE OR REPLACE FUNCTION tdigest_union(a tdigest, b tdigest) RETURNS tdigest AS $$
+        select tdigest(sketch) from (select a as sketch union all select b) t;
+    $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+    INSERT INTO algebras
+        (name,agg,type,zero,plus,negate,view)
+        VALUES
+        ('tdigest'
+        ,'tdigest(x,100)'
+        ,'tdigest'
+        ,'tdigest(null,100)'
+        ,'tdigest_union(tdigest(x),tdigest(y))'
+        ,NULL
+        ,'tdigest_percentile(x,0.5)'
+        );
+END IF;
+END
+$do$ language 'plpgsql';
 
 --------------------------------------------------------------------------------
 
@@ -348,19 +380,6 @@ END;
 $function$;
 
 
-CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
-RETURNS VOID AS $$
-    sql = f'select * from {rollup_name}_groundtruth except select * from {rollup_name};';
-    res = plpy.execute(sql)
-    assert len(res)==0
-    sql = f'select * from {rollup_name} except select * from {rollup_name}_groundtruth;';
-    res = plpy.execute(sql)
-    assert len(res)==0
-$$
-LANGUAGE plpython3u
-RETURNS NULL ON NULL INPUT;
-
-
 CREATE OR REPLACE FUNCTION create_rollup(
     table_name  REGCLASS,
     rollup_name TEXT,
@@ -432,8 +451,12 @@ RETURNS VOID AS $$
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
             sql = f"select * from algebras where name='{algebra}';"
-            algebra_dictionary = plpy.execute(sql)[0]
-            ret.append(pg_rollup.Key(value,type,name,algebra_dictionary))
+            res = list(plpy.execute(sql))
+            if len(res)==1:
+                algebra_dictionary = res[0]
+                ret.append(pg_rollup.Key(value,type,name,algebra_dictionary))
+            else:
+                plpy.error(f'algbera {algebra} not found in the algebras table')
 
             # add dependencies to ks if they are not present
             deps = []
@@ -616,3 +639,90 @@ $$
 LANGUAGE plpython3u
 RETURNS NULL ON NULL INPUT;
 
+
+
+------------------------------------------------------------------------------------------------------------------------
+-- the following functions are used to verify the correctness of rollup tables;
+-- they are primarily intended for use in the test cases;
+-- these functions are potentially slow, and so production use should be careful;
+--
+-- the function assert_rollup checks for exact equality between the rollup and the groundtruth;
+-- it should be used on rollups with only discrete entries that are deterministically generated
+--
+-- the function assert_rollup_relative_error checks for approximate equality between the rollup and the groundtruth;
+-- it should be used on rollups that either use floating point calculations or have internal randomness;
+-- the relative_error parameter must be tuned to the accuracy guarantee provided by the rollup algebras
+
+CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
+RETURNS VOID AS $$
+    sql = f'select * from {rollup_name}_groundtruth except select * from {rollup_name};';
+    res = plpy.execute(sql)
+    assert len(res)==0
+    sql = f'select * from {rollup_name} except select * from {rollup_name}_groundtruth;';
+    res = plpy.execute(sql)
+    assert len(res)==0
+$$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION relative_error(a double precision, b double precision) RETURNS DOUBLE PRECISION AS $$
+    select greatest(abs(a),abs(b))/least(abs(a),abs(b))-1;
+$$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION rollup_column_relative_error(rollup_name REGCLASS, column_name TEXT) RETURNS DOUBLE PRECISION AS $$
+    sql = f'select "{column_name}" from {rollup_name};';
+    res = plpy.execute(sql)
+    assert len(res)==1
+    val1 = res[0][column_name]
+
+    sql = f'select "{column_name}" from {rollup_name}_groundtruth;';
+    res = plpy.execute(sql)
+    assert len(res)==1
+    val2 = res[0][column_name]
+
+    sql = f'select relative_error({val1},{val2}) as relative_error;';
+    res = plpy.execute(sql)
+    return res[0]['relative_error']
+$$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION assert_rollup_column_relative_error(rollup_name REGCLASS, column_name TEXT, relative_error DOUBLE PRECISION) RETURNS VOID AS $$
+    sql = f"select rollup_column_relative_error('{rollup_name}','{column_name}') as relative_error;";
+    res = plpy.execute(sql)
+    if not res[0]['relative_error'] < relative_error:
+        plpy.error(f"relative_error={res[0]['relative_error']} > {relative_error}")
+$$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, relative_error DOUBLE PRECISION) RETURNS VOID AS $$
+    sql = f"select * from {rollup_name} where true limit 1;"
+    res = plpy.execute(sql)
+    columns = res[0].keys()
+    plpy.error('columns={str(columns)}')
+
+    sql = f"select rollup_column_relative_error('{rollup_name}','{column_name}') as relative_error;";
+    res = plpy.execute(sql)
+    if not res[0]['relative_error'] < relative_error:
+        plpy.error(f"relative_error={res[0]['relative_error']} > {relative_error}")
+$$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
+
+
+CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, relative_error DOUBLE PRECISION) RETURNS VOID AS $$
+    # get a list of the columns in the rollup
+    sql = f"select * from {rollup_name} where true limit 1;"
+    res = plpy.execute(sql)
+    columns = res[0].keys()
+
+    # count the number of columns that do not satisfy the relative_error condition
+    num_bad_columns = 0
+    for column_name in columns:
+        sql = f"select rollup_column_relative_error('{rollup_name}','{column_name}') as relative_error;";
+        res = plpy.execute(sql)
+        if not res[0]['relative_error'] < relative_error:
+            plpy.warning(f"column {column_name} has relative_error={res[0]['relative_error']} > {relative_error}")
+            num_bad_columns+=1
+
+    # the test case
+    assert num_bad_columns==0
+
+$$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
