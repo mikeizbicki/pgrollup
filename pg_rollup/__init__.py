@@ -437,17 +437,17 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
 
                 (_algsub(distinct.algebra['view'],''+distinct.name)
                 if distinct.algebra['plus'].lower().strip() != 'null'
-                else '1'
-                #else ''+distinct.name+self._joinsub(
-                        #distinct.algebra['view'],
-                        #self.rollup_table_name,
-                        #''+distinct.value,
-                        #distinct.algebra['zero'],
-                        #'excluded',
-                        #''+distinct.value,
-                        #distinct.algebra['zero'],
-                        #self.distincts
-                        #)
+                #else '1'
+                else self._joinsub(
+                        distinct.algebra['view'],
+                        source,
+                        ''+distinct.value,
+                        distinct.algebra['zero'],
+                        'excluded',
+                        ''+distinct.value,
+                        distinct.algebra['zero'],
+                        self.distincts
+                        )
                 )
                 +' AS '+''+distinct.name for distinct in self.distincts
                 ])

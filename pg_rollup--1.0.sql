@@ -16,6 +16,8 @@ CREATE TABLE algebras (
 /*
  * postgres-native algebras
  *
+ * FIXME: need to add dependency support for view-only algebras
+ *
  * FIXME: the following aggregate functions could be implemented, but are not
  * bit_and
  * bit_or
@@ -31,7 +33,6 @@ INSERT INTO algebras
     VALUES
     ('count'        ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
     ('sum'          ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
-    --('sum'          ,'coalesce(sum(x),0)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
     ('min'          ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'         ,NULL   ,'x'),
     ('max'          ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x');
 
@@ -58,19 +59,17 @@ INSERT INTO algebras
     , 'var_samp(x)'
     , 'FLOAT'
     , 'null'
-    --, '((count(x))/(count(x)+count(y)::FLOAT))*(((count(x))/(count(x)::FLOAT))*var_samp(x)+(avg(x) - (count(x))/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)::FLOAT))*(((count(y))/(count(y)::FLOAT))*var_samp(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2)'
-    --, '((count(x)+0.000000001)/(count(x)+count(y)-0.999999999::FLOAT))*(((count(x)-0.999999999)/(count(x)+0.000000001::FLOAT))*var_samp(x)+(avg(x) - (count(x)+0.000000001)/(count(x)+count(y)+0.000000001::FLOAT)*avg(x) - count(y)/(count(x)+count(y)+0.000000001::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)-0.999999999::FLOAT))*(((count(y)-0.999999999)/(count(y)+0.000000001::FLOAT))*var_samp(y)+(avg(y) - count(y)/(count(x)+count(y)+0.000000001::FLOAT)*avg(y) - count(x)/(count(x)+count(y)+0.000000001::FLOAT)*avg(x))^2)'
     , 'null'
     , 'x'
-    , 'var_pop(x)*(count(x)/(count(x)-1)'
+    , 'CASE WHEN count(x) > 1 THEN var_pop(x)*count(x)/(count(x)-1) ELSE var_pop(x) END'
     ),
     ( 'variance'
     , 'coalesce(variance(x),0)'
     , 'FLOAT'
-    , '0'
-    , '(count(x)/(count(x)+count(y)-1::FLOAT))*(((count(x)-1)/(count(x)::FLOAT))*variance(x)+(avg(x) - count(x)/(count(x)+count(y)::FLOAT)*avg(x) - count(y)/(count(x)+count(y)::FLOAT)*avg(y))^2) + (count(y)/(count(x)+count(y)-1::FLOAT))*(((count(y)-1)/(count(y)::FLOAT))*variance(y)+(avg(y) - count(y)/(count(x)+count(y)::FLOAT)*avg(y) - count(x)/(count(x)+count(y)::FLOAT)*avg(x))^2)'
+    , 'null'
+    , 'null'
     , 'x'
-    , 'x'
+    , 'CASE WHEN count(x) > 1 THEN var_pop(x)*count(x)/(count(x)-1) ELSE var_pop(x) END'
     );
 
 --------------------------------------------------------------------------------

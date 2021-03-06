@@ -12,10 +12,10 @@ select create_rollup(
     rollups => $$
         count(num),
         avg(num),
-        var_pop(num)
+        var_pop(num),
+        var_samp(num),
+        variance(num)
     $$
-        --var_samp(num)
-        --variance(num)
 );
 
 
@@ -79,5 +79,5 @@ insert into testfloat (num) values (null);
 
 select assert_rollup_relative_error('testfloat_rollup1', 1e-12);
 
-select 'testfloat_rollup1',* from testfloat_rollup1 union select 'testfloat_rollup1_groundtruth',* from testfloat_rollup1_groundtruth;
+--select 'testfloat_rollup1',* from testfloat_rollup1 union select 'testfloat_rollup1_groundtruth',* from testfloat_rollup1_groundtruth;
 
