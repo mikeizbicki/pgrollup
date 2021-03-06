@@ -16,16 +16,9 @@ CREATE TABLE algebras (
 /*
  * postgres-native algebras
  *
- * FIXME: need to add dependency support for view-only algebras
- *
  * FIXME: the following aggregate functions could be implemented, but are not
  * bit_and
  * bit_or
- * bool_and
- * bool_or
- * stddev
- * stddev_samp
- * stddev_pop
  */
 
 INSERT INTO algebras
@@ -34,7 +27,9 @@ INSERT INTO algebras
     ('count'        ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
     ('sum'          ,'sum(x)'                       ,'x'        ,'0'                        ,'sum(x)+sum(y)'                ,'-x'   ,'x'),
     ('min'          ,'min(x)'                       ,'x'        ,'null'                     ,'least(min(x),min(y))'         ,NULL   ,'x'),
-    ('max'          ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x');
+    ('max'          ,'max(x)'                       ,'x'        ,'null'                     ,'greatest(max(x),max(y))'      ,NULL   ,'x'),
+    ('bool_and'     ,'bool_and(x)'                  ,'BOOL'     ,'TRUE'                     ,'bool_and(x) and bool_and(y)'  ,NULL   ,'x'),
+    ('bool_or'      ,'bool_or(x)'                   ,'BOOL'     ,'FALSE'                    ,'bool_or(x) or bool_or(y)'     ,NULL   ,'x');
 
 INSERT INTO algebras
     (name,agg,type,zero,plus,negate,view)
