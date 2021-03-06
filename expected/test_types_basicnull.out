@@ -114,7 +114,7 @@ select * from nulltest_rollup3_raw;
 select * from nulltest_rollup3_groundtruth_raw;
  sum | count_all | count(num) | max(num) | min(num) | where_name 
 -----+-----------+------------+----------+----------+------------
-     |         2 |          0 |          |          | 
+   0 |         2 |          0 |          |          | 
 (1 row)
 
 select assert_rollup('nulltest_rollup1');

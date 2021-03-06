@@ -40,26 +40,6 @@ def _algsub(text, x='', y=''):
     return re.sub(r'\by\b',y,re.sub(r'\bx\b',x,text))
 
 
-def _joinsub(text, xtable, xval, xzero, ytable, yval, yzero,distincts):
-    '''
-    >>> _joinsub('hll(x)||hll(y)', 'xtable', 'xval', 'ytable', 'yval')
-    'xtable."hll(xval)"||ytable."hll(yval)"'
-    >>> _joinsub('xy(f(x),f(y))', 'xtable', 'xval', 'ytable', 'yval')
-    'xy(xtable."f(xval)",ytable."f(yval)")'
-    >>> _joinsub('avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))', 'xtable', 'xval', 'ytable', 'yval')
-    'xtable."avg(xval)"*(xtable."count(xval)"/(xtable."count(xval)"+ytable."count(yval)"))+ytable."avg(yval)"*(ytable."count(yval)"/(xtable."count(xval)"+ytable."count(yval)"))'
-    '''
-    subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)','COALESCE('+xtable+r'."\1('+xval+')",'+xzero+')',text)
-    suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
-    #subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)',xtable+r'."\1('+xval+')"',text)
-    #suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)',ytable+r'."\1('+yval+')"',subx)
-    ret = suby
-    for distinct in distincts:
-        #ret = re.sub('"'+distinct.value+'"', distinct.name, ret)
-        ret = ret.replace('"'+distinct.algebra['name']+'('+distinct.value+')"', distinct.name)
-    return ret
-
-
 def _extract_arguments(s):
     '''
     >>> _extract_arguments('a,b,c')
@@ -282,8 +262,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 '''+
                 ''',
                 '''.join([
-                    ''+distinct.name+' = '+_joinsub(
-                        distinct.algebra['plus'],
+                    ''+distinct.name+self._joinsub(f''' = CASE
+                        WHEN {self.rollup_table_name}."{distinct.algebra['name']}({distinct.value})" IS NOT NULL AND excluded."{distinct.algebra['name']}({distinct.value})" IS NOT NULL THEN {distinct.algebra['plus']}
+                        WHEN {self.rollup_table_name}."{distinct.algebra['name']}({distinct.value})" IS NOT NULL AND excluded."{distinct.algebra['name']}({distinct.value})" IS     NULL THEN {self.rollup_table_name}."{distinct.algebra['name']}({distinct.value})" 
+                        WHEN {self.rollup_table_name}."{distinct.algebra['name']}({distinct.value})" IS     NULL AND excluded."{distinct.algebra['name']}({distinct.value})" IS NOT NULL THEN excluded."{distinct.algebra['name']}({distinct.value})"
+                        WHEN {self.rollup_table_name}."{distinct.algebra['name']}({distinct.value})" IS     NULL AND excluded."{distinct.algebra['name']}({distinct.value})" IS     NULL THEN {distinct.algebra['zero']}
+                        END
+                    ''',
+                    #''+distinct.name+' = '+self._joinsub(
+                        #distinct.algebra['plus'],
                         self.rollup_table_name,
                         ''+distinct.value,
                         distinct.algebra['zero'],
@@ -291,10 +278,6 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                         ''+distinct.value,
                         distinct.algebra['zero'],
                         self.distincts
-                    #''+distinct.name+' = '+_algsub(
-                        #distinct.algebra['plus'],
-                        #self.rollup_table_name+'.'+''+distinct.name,
-                        #'excluded.'+''+distinct.name
                         )
                     for distinct in self.distincts
                     ])
@@ -306,6 +289,26 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         if self.null_support else ''
         )
         for binary in self.binaries])
+
+
+    def _sub_distincts(self, text):
+        for distinct in self.distincts:
+            text = text.replace('"'+distinct.algebra['name']+'('+distinct.value+')"', distinct.name)
+        return text 
+
+
+    def _joinsub(self, text, xtable, xval, xzero, ytable, yval, yzero,distincts):
+        '''
+        >>> _joinsub('hll(x)||hll(y)', 'xtable', 'xval', 'ytable', 'yval')
+        'xtable."hll(xval)"||ytable."hll(yval)"'
+        >>> _joinsub('xy(f(x),f(y))', 'xtable', 'xval', 'ytable', 'yval')
+        'xy(xtable."f(xval)",ytable."f(yval)")'
+        >>> _joinsub('avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))', 'xtable', 'xval', 'ytable', 'yval')
+        'xtable."avg(xval)"*(xtable."count(xval)"/(xtable."count(xval)"+ytable."count(yval)"))+ytable."avg(yval)"*(ytable."count(yval)"/(xtable."count(xval)"+ytable."count(yval)"))'
+        '''
+        subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)','COALESCE('+xtable+r'."\1('+xval+')",'+xzero+')',text)
+        suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
+        return self._sub_distincts(suby)
 
 
     def create_manualrollup(self):
@@ -377,12 +380,12 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 '''+
                 ''',
                 '''.join([
-                    #'COALESCE('+
+                    'COALESCE('+
                     _algsub(
                         distinct.algebra['agg'],
                         distinct.value
                         )
-                    #+','+distinct.algebra['zero']+')'
+                    +','+distinct.algebra['zero']+')'
                     +' AS '+''+distinct.name
                     for distinct in self.distincts
                     ])
@@ -431,7 +434,21 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             '''+
             ''',
             '''.join([
-                _algsub(distinct.algebra['view'],''+distinct.name)
+
+                (_algsub(distinct.algebra['view'],''+distinct.name)
+                if distinct.algebra['plus'].lower().strip() != 'null'
+                else '1'
+                #else ''+distinct.name+self._joinsub(
+                        #distinct.algebra['view'],
+                        #self.rollup_table_name,
+                        #''+distinct.value,
+                        #distinct.algebra['zero'],
+                        #'excluded',
+                        #''+distinct.value,
+                        #distinct.algebra['zero'],
+                        #self.distincts
+                        #)
+                )
                 +' AS '+''+distinct.name for distinct in self.distincts
                 ])
             if self.use_hll else ''
@@ -443,24 +460,26 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             '''.join([key.name for key in self.wheres])
             if len(self.wheres)>0 else '' )+
             '''
-        FROM '''+source+(
-        '''
-        WHERE
-        '''
-        if len(['' for distinct in self.distincts if distinct.algebra['negate'] is not None])>0
-        else ''
+        FROM '''+source+';'
+        #(
+        #'''
+        #WHERE
+        #'''
+        #if len(['' for distinct in self.distincts if distinct.algebra['negate'] is not None])>0
+        #else ''
+        #)
+        #+
+        #(
+        #''' AND 
+        #'''.join(['''
+                #''' + _algsub(distinct.algebra['view'],''+distinct.name)
+                    #+ ' != ' 
+                    #+ _algsub(distinct.algebra['view'],distinct.algebra['zero'])
+                #for distinct in self.distincts if distinct.algebra['negate'] is not None #and distinct.algebra['plus'].lower().strip() != 'null'
+            #])
+        #)+'''
+        #;'''
         )
-        +
-        (
-        ''' AND 
-        '''.join(['''
-                ''' + _algsub(distinct.algebra['view'],''+distinct.name)
-                    + ' != ' 
-                    + _algsub(distinct.algebra['view'],distinct.algebra['zero'])
-                for distinct in self.distincts if distinct.algebra['negate'] is not None
-            ])
-        )+'''
-        ;''')
 
 
     def create_insert(self):
