@@ -100,6 +100,23 @@ select create_rollup(
     $$
 );
 
+select create_rollup(
+    'testdeps',
+    'testdeps_rollup7',
+    rollups => $$
+        var_pop(a),
+        variance(b)
+    $$
+);
+
+select create_rollup(
+    'testdeps',
+    'testdeps_rollup8',
+    rollups => $$
+        variance(b)
+    $$
+);
+
 insert into testdeps (a,b) values
     (0, 1),
     (0, 2),

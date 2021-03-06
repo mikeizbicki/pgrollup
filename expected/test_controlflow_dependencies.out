@@ -140,6 +140,37 @@ NOTICE:  view "testdeps_rollup6_groundtruth" will be a temporary view
  
 (1 row)
 
+select create_rollup(
+    'testdeps',
+    'testdeps_rollup7',
+    rollups => $$
+        var_pop(a),
+        variance(b)
+    $$
+);
+NOTICE:  view "testdeps_rollup7_groundtruth_raw" will be a temporary view
+NOTICE:  view "testdeps_rollup7" will be a temporary view
+NOTICE:  view "testdeps_rollup7_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'testdeps',
+    'testdeps_rollup8',
+    rollups => $$
+        variance(b)
+    $$
+);
+NOTICE:  view "testdeps_rollup8_groundtruth_raw" will be a temporary view
+NOTICE:  view "testdeps_rollup8" will be a temporary view
+NOTICE:  view "testdeps_rollup8_groundtruth" will be a temporary view
+ create_rollup 
+---------------
+ 
+(1 row)
+
 insert into testdeps (a,b) values
     (0, 1),
     (0, 2),

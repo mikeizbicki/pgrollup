@@ -489,6 +489,9 @@ RETURNS VOID AS $$
             deps = []
             for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['plus']):
                 deps.append(match.group(1))
+            if algebra_dictionary['plus'].strip().lower() == 'null':
+                for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['view']):
+                    deps.append(match.group(1))
             deps = set(deps)
             if algebra in deps:
                 deps.remove(algebra)
