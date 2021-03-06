@@ -14,7 +14,10 @@ select create_rollup(
         avg(num),
         var_pop(num),
         var_samp(num),
-        variance(num)
+        variance(num),
+        stddev(num),
+        stddev_pop(num),
+        stddev_samp(num)
     $$
 );
 

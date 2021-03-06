@@ -70,6 +70,30 @@ INSERT INTO algebras
     , 'null'
     , 'x'
     , 'CASE WHEN count(x) > 1 THEN var_pop(x)*count(x)/(count(x)-1) ELSE var_pop(x) END'
+    ),
+    ( 'stddev'
+    , 'stddev(x)'
+    , 'FLOAT'
+    , 'null'
+    , 'null'
+    , 'x'
+    , 'CASE WHEN count(x) > 1 THEN sqrt(var_pop(x)*count(x)/(count(x)-1)) ELSE stddev(x) END'
+    ),
+    ( 'stddev_samp'
+    , 'stddev_samp(x)'
+    , 'FLOAT'
+    , 'null'
+    , 'null'
+    , 'x'
+    , 'CASE WHEN count(x) > 1 THEN sqrt(var_pop(x)*count(x)/(count(x)-1)) ELSE stddev_samp(x) END'
+    ),
+    ( 'stddev_pop'
+    , 'stddev_pop(x)'
+    , 'FLOAT'
+    , 'null'
+    , 'null'
+    , 'x'
+    , 'CASE WHEN count(x) > 1 THEN sqrt(var_pop(x)) ELSE stddev_pop(x) END'
     );
 
 --------------------------------------------------------------------------------
