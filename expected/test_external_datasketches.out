@@ -1,3 +1,4 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists datasketches;
 drop extension pg_rollup;

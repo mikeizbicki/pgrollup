@@ -1,6 +1,6 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-SET client_min_messages TO WARNING;
 
 drop tablespace if exists example;
 create tablespace example location '/tmp/tablespace';

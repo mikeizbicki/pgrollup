@@ -1,3 +1,4 @@
+SET client_min_messages TO WARNING;
 /*
  * The purpose of this test file is a bit different than other test files;
  * we are not checking anywhere that the rollups created are correct;
@@ -9,7 +10,6 @@
  */
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 create temporary table testdeps (
     id serial primary key,
     a int,
@@ -50,9 +50,6 @@ select create_rollup(
         avg(b)
     $$
 );
-NOTICE:  view "testdeps_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup1" will be a temporary view
-NOTICE:  view "testdeps_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -66,9 +63,6 @@ select create_rollup(
         var_pop(b)
     $$
 );
-NOTICE:  view "testdeps_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup2" will be a temporary view
-NOTICE:  view "testdeps_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -83,9 +77,6 @@ select create_rollup(
         var_pop(b)
     $$
 );
-NOTICE:  view "testdeps_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup3" will be a temporary view
-NOTICE:  view "testdeps_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -100,9 +91,6 @@ select create_rollup(
         var_pop(b)
     $$
 );
-NOTICE:  view "testdeps_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup4" will be a temporary view
-NOTICE:  view "testdeps_rollup4_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -116,9 +104,6 @@ select create_rollup(
         var_pop(b)
     $$
 );
-NOTICE:  view "testdeps_rollup5_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup5" will be a temporary view
-NOTICE:  view "testdeps_rollup5_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -132,9 +117,6 @@ select create_rollup(
         var_pop(b)
     $$
 );
-NOTICE:  view "testdeps_rollup6_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup6" will be a temporary view
-NOTICE:  view "testdeps_rollup6_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -148,9 +130,6 @@ select create_rollup(
         variance(b)
     $$
 );
-NOTICE:  view "testdeps_rollup7_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup7" will be a temporary view
-NOTICE:  view "testdeps_rollup7_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -163,9 +142,6 @@ select create_rollup(
         variance(b)
     $$
 );
-NOTICE:  view "testdeps_rollup8_groundtruth_raw" will be a temporary view
-NOTICE:  view "testdeps_rollup8" will be a temporary view
-NOTICE:  view "testdeps_rollup8_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

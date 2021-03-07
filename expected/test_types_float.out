@@ -1,6 +1,6 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 create temporary table testfloat (
     id serial primary key,
     num bigint
@@ -19,9 +19,6 @@ select create_rollup(
         stddev_samp(num)
     $$
 );
-NOTICE:  view "testfloat_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "testfloat_rollup1" will be a temporary view
-NOTICE:  view "testfloat_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

@@ -1,6 +1,6 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 create temporary table testbool (
     id serial primary key,
     a bool,
@@ -22,9 +22,6 @@ select create_rollup(
         bool_or(d)
     $$
 );
-NOTICE:  view "testbool_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "testbool_rollup1" will be a temporary view
-NOTICE:  view "testbool_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

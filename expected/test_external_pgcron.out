@@ -1,6 +1,6 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 create extension if not exists pg_cron;
 create temporary table test_cron (
     id serial primary key,
@@ -41,9 +41,6 @@ select create_rollup(
     wheres => 'name',
     key => 'id'
 );
-NOTICE:  view "test_cron_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_cron_rollup1" will be a temporary view
-NOTICE:  view "test_cron_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -55,9 +52,6 @@ select create_rollup(
     wheres => 'name,num',
     key => 'id'
 );
-NOTICE:  view "test_cron_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_cron_rollup2" will be a temporary view
-NOTICE:  view "test_cron_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -71,9 +65,6 @@ select create_rollup(
     key => 'id',
     mode => 'trigger'
 );
-NOTICE:  view "test_cron_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_cron_rollup3" will be a temporary view
-NOTICE:  view "test_cron_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -86,9 +77,6 @@ select create_rollup(
     key => 'id',
     mode => 'cron'
 );
-NOTICE:  view "test_cron_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_cron_rollup4" will be a temporary view
-NOTICE:  view "test_cron_rollup4_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

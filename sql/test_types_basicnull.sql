@@ -1,3 +1,4 @@
+SET client_min_messages TO WARNING;
 /*
  * this file tests the types in the basic test case, but puts more emphasis on null values;
  * there were some bugs where null values were not getting coalesced into zero,

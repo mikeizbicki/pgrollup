@@ -1,6 +1,6 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 create temporary table test (
     id serial primary key,
     name text,
@@ -38,9 +38,6 @@ select create_rollup(
     'test_rollup1',
     wheres => 'name'
 );
-NOTICE:  view "test_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup1" will be a temporary view
-NOTICE:  view "test_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -51,9 +48,6 @@ select create_rollup(
     'test_rollup2',
     wheres => 'name,num'
 );
-NOTICE:  view "test_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup2" will be a temporary view
-NOTICE:  view "test_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -71,9 +65,6 @@ select create_rollup(
         min(num)
     $$
 );
-NOTICE:  view "test_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup3" will be a temporary view
-NOTICE:  view "test_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -90,9 +81,6 @@ select create_rollup(
         min(num)
     $$
 );
-NOTICE:  view "test_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup4" will be a temporary view
-NOTICE:  view "test_rollup4_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  

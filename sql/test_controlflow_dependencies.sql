@@ -1,3 +1,4 @@
+SET client_min_messages TO WARNING;
 /*
  * The purpose of this test file is a bit different than other test files;
  * we are not checking anywhere that the rollups created are correct;

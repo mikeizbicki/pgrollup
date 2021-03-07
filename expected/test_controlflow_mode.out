@@ -1,6 +1,6 @@
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 create temporary table test (
     id serial primary key,
     name text,
@@ -40,9 +40,6 @@ select create_rollup(
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup1" will be a temporary view
-NOTICE:  view "test_rollup1_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -55,9 +52,6 @@ select create_rollup(
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup2" will be a temporary view
-NOTICE:  view "test_rollup2_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -71,9 +65,6 @@ select create_rollup(
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup3" will be a temporary view
-NOTICE:  view "test_rollup3_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -86,9 +77,6 @@ select create_rollup(
     key => 'id',
     mode => 'manual'
 );
-NOTICE:  view "test_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "test_rollup4" will be a temporary view
-NOTICE:  view "test_rollup4_groundtruth" will be a temporary view
  create_rollup 
 ---------------
  
@@ -1058,24 +1046,3 @@ select assert_rollup('test_rollup4');
 (1 row)
 
 drop table test cascade;
-NOTICE:  drop cascades to 8 other objects
-DETAIL:  drop cascades to view test_rollup1_groundtruth_raw
-drop cascades to view test_rollup1_groundtruth
-drop cascades to view test_rollup2_groundtruth_raw
-drop cascades to view test_rollup2_groundtruth
-drop cascades to view test_rollup3_groundtruth_raw
-drop cascades to view test_rollup3_groundtruth
-drop cascades to view test_rollup4_groundtruth_raw
-drop cascades to view test_rollup4_groundtruth
-NOTICE:  drop cascades to view test_rollup1
-NOTICE:  view "test_rollup1_groundtruth" does not exist, skipping
-NOTICE:  view "test_rollup1_groundtruth_raw" does not exist, skipping
-NOTICE:  drop cascades to view test_rollup2
-NOTICE:  view "test_rollup2_groundtruth" does not exist, skipping
-NOTICE:  view "test_rollup2_groundtruth_raw" does not exist, skipping
-NOTICE:  drop cascades to view test_rollup3
-NOTICE:  view "test_rollup3_groundtruth" does not exist, skipping
-NOTICE:  view "test_rollup3_groundtruth_raw" does not exist, skipping
-NOTICE:  drop cascades to view test_rollup4
-NOTICE:  view "test_rollup4_groundtruth" does not exist, skipping
-NOTICE:  view "test_rollup4_groundtruth_raw" does not exist, skipping
