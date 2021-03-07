@@ -191,7 +191,6 @@ INSERT INTO algebras
     ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'
     ,NULL
     ,'kll_float_sketch_get_quantile(x,0.5)'
-    --,'kll_float_sketch_get_quantiles(x,ARRAY[0, 0.25, 0.5, 0.75, 1])'
     ),
     ('frequent_strings_sketch'
     ,'frequent_strings_sketch_build(9,x)'

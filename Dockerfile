@@ -1,77 +1,51 @@
-FROM postgres:12
+ARG BASE_IMAGE_VERSION=latest
+
+FROM postgres:$BASE_IMAGE_VERSION
 
 # install system packages
-RUN apt-get update && apt-get install -y \
-    autoconf \
-    gcc \
-    git \
-    make \
-    postgresql-server-dev-12 \
-    postgresql-plpython3-12 \
-    python3 \
-    python3-pip
-
-# install postgres hll extension from source
-RUN cd /tmp \
- && git clone https://github.com/citusdata/postgresql-hll \
- && cd postgresql-hll \
- && git checkout v2.15 \
- && make \
- && make install \
- && rm -rf /tmp/postgresql-hll
-
-# install the tdigest plugin from source
-RUN cd /tmp \
- && git clone https://github.com/tvondra/tdigest/ \
- && cd tdigest \
- && git checkout v1.0.1 \
- && make \
- && make install \
- && rm -rf /tmp/tdigest
-
-# install the cms_topn plugin from source
-#RUN cd /tmp \
- #&& git clone https://github.com/ozturkosu/cms_topn \
- #&& cd cms_topn \
- #&& git checkout 78ce0d1e0437c0b35419d963685d5de57a87078e \
- #&& make \
- #&& make install \
- #&& rm -rf /tmp/cms_topn
-
-# install pg_cron plugin from source
-RUN cd /tmp \
- && git clone https://github.com/citusdata/pg_cron.git \
- && cd pg_cron \
- && git checkout v1.3.0 \
- && make \
- && make install \
- && rm -rf /tmp/pg_cron
-COPY ./postgresql.conf /etc/postgresql.conf
-
-# install the tdigest plugin from source
-RUN cd /tmp \
- && git clone https://github.com/citusdata/postgresql-topn \
- && cd postgresql-topn \
- && git checkout v2.3.1 \
- && make \
- && make install \
- && rm -rf /tmp/postgresql-topn
-
-# install datasketches
-RUN apt-get update && apt-get install -y wget zip
-RUN cd /tmp \
- && wget http://api.pgxn.org/dist/datasketches/1.3.0/datasketches-1.3.0.zip \
- && unzip datasketches-1.3.0.zip \
- && cd datasketches-1.3.0 \
- && make \
- && (make install || true) \
- && rm -rf /tmp/datasketches-1.3.0
+COPY ./install_dependencies.sh /tmp
+RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*\)\/.*/\1/p"`             \
+ && export PG_MINOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-$PG_MAJOR\/\S*\s\(\S*\)\s.*/\1/p"` \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --allow-downgrades \
+        autoconf \
+        gcc \
+        g++ \
+        git \
+        make \
+        postgresql-server-dev-$PG_MAJOR \
+        postgresql-plpython3-$PG_MAJOR \
+        python3 \
+        python3-pip \
+        wget \
+        zip \
+        unzip \
+ && sh /tmp/install_dependencies.sh \
+ && apt-get purge --auto-remove -y \
+        autoconf \
+        gcc \
+        g++ \
+        git \
+        make \
+        postgresql-server-dev-$PG_MAJOR \
+        postgresql-plpython3-$PG_MAJOR \
+        python3 \
+        python3-pip \
+        wget \
+        zip \
+        unzip \
+ && apt-get autoremove
 
 # create a tablespace directory for the testcases
 RUN mkdir /tmp/tablespace \
  && chown postgres /tmp/tablespace
 
 WORKDIR /tmp/pg_rollup
+
+RUN apt-get install -y --no-install-recommends \
+        postgresql-plpython3-$BASE_IMAGE_VERSION \
+        python3 \
+        python3-pip
 
 # copy over the project
 COPY . /tmp/pg_rollup
