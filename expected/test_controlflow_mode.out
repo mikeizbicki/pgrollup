@@ -47,9 +47,31 @@ select create_rollup(
 
 select create_rollup(
     'test',
+    'test_rollup1b',
+    wheres => 'name',
+    mode => 'manual'
+);
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'test',
     'test_rollup2',
     wheres => 'name,num',
     key => 'id',
+    mode => 'manual'
+);
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'test',
+    'test_rollup2b',
+    wheres => 'name,num',
     mode => 'manual'
 );
  create_rollup 
@@ -72,9 +94,32 @@ select create_rollup(
 
 select create_rollup(
     'test',
+    'test_rollup3b',
+    wheres => 'name',
+    rollups => 'count(num)',
+    mode => 'manual'
+);
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'test',
     'test_rollup4',
     rollups => 'count(name),count(num)',
     key => 'id',
+    mode => 'manual'
+);
+ create_rollup 
+---------------
+ 
+(1 row)
+
+select create_rollup(
+    'test',
+    'test_rollup4b',
+    rollups => 'count(name),count(num)',
     mode => 'manual'
 );
  create_rollup 
@@ -115,7 +160,19 @@ select do_rollup('test_rollup1');
  (27,52)
 (1 row)
 
+select do_rollup('test_rollup1b');
+ do_rollup 
+-----------
+ (27,52)
+(1 row)
+
 select do_rollup('test_rollup2');
+ do_rollup 
+-----------
+ (27,52)
+(1 row)
+
+select do_rollup('test_rollup2b');
  do_rollup 
 -----------
  (27,52)
@@ -127,7 +184,19 @@ select do_rollup('test_rollup3');
  (27,52)
 (1 row)
 
+select do_rollup('test_rollup3b');
+ do_rollup 
+-----------
+ (27,52)
+(1 row)
+
 select do_rollup('test_rollup4');
+ do_rollup 
+-----------
+ (27,52)
+(1 row)
+
+select do_rollup('test_rollup4b');
  do_rollup 
 -----------
  (27,52)
@@ -139,7 +208,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -151,7 +232,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -190,7 +283,19 @@ select do_rollup('test_rollup1');
  (53,78)
 (1 row)
 
+select do_rollup('test_rollup1b');
+ do_rollup 
+-----------
+ (53,78)
+(1 row)
+
 select do_rollup('test_rollup2');
+ do_rollup 
+-----------
+ (53,78)
+(1 row)
+
+select do_rollup('test_rollup2b');
  do_rollup 
 -----------
  (53,78)
@@ -202,7 +307,19 @@ select do_rollup('test_rollup3');
  (53,78)
 (1 row)
 
+select do_rollup('test_rollup3b');
+ do_rollup 
+-----------
+ (53,78)
+(1 row)
+
 select do_rollup('test_rollup4');
+ do_rollup 
+-----------
+ (53,78)
+(1 row)
+
+select do_rollup('test_rollup4b');
  do_rollup 
 -----------
  (53,78)
@@ -214,7 +331,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -226,7 +355,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -238,7 +379,19 @@ select do_rollup('test_rollup1');
  (79,78)
 (1 row)
 
+select do_rollup('test_rollup1b');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
 select do_rollup('test_rollup2');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
+select do_rollup('test_rollup2b');
  do_rollup 
 -----------
  (79,78)
@@ -250,7 +403,19 @@ select do_rollup('test_rollup3');
  (79,78)
 (1 row)
 
+select do_rollup('test_rollup3b');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
 select do_rollup('test_rollup4');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
+select do_rollup('test_rollup4b');
  do_rollup 
 -----------
  (79,78)
@@ -262,7 +427,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -274,7 +451,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -286,7 +475,19 @@ select do_rollup('test_rollup1');
  (79,78)
 (1 row)
 
+select do_rollup('test_rollup1b');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
 select do_rollup('test_rollup2');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
+select do_rollup('test_rollup2b');
  do_rollup 
 -----------
  (79,78)
@@ -298,7 +499,19 @@ select do_rollup('test_rollup3');
  (79,78)
 (1 row)
 
+select do_rollup('test_rollup3b');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
 select do_rollup('test_rollup4');
+ do_rollup 
+-----------
+ (79,78)
+(1 row)
+
+select do_rollup('test_rollup4b');
  do_rollup 
 -----------
  (79,78)
@@ -310,7 +523,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -322,7 +547,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -415,7 +652,19 @@ select do_rollup('test_rollup1');
  (79,156)
 (1 row)
 
+select do_rollup('test_rollup1b');
+ do_rollup 
+-----------
+ (79,156)
+(1 row)
+
 select do_rollup('test_rollup2');
+ do_rollup 
+-----------
+ (79,156)
+(1 row)
+
+select do_rollup('test_rollup2b');
  do_rollup 
 -----------
  (79,156)
@@ -427,7 +676,19 @@ select do_rollup('test_rollup3');
  (79,156)
 (1 row)
 
+select do_rollup('test_rollup3b');
+ do_rollup 
+-----------
+ (79,156)
+(1 row)
+
 select do_rollup('test_rollup4');
+ do_rollup 
+-----------
+ (79,156)
+(1 row)
+
+select do_rollup('test_rollup4b');
  do_rollup 
 -----------
  (79,156)
@@ -439,7 +700,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -451,7 +724,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -490,7 +775,19 @@ select rollup_mode('test_rollup1','trigger');
  
 (1 row)
 
+select rollup_mode('test_rollup1b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup2','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','trigger');
  rollup_mode 
 -------------
  
@@ -502,7 +799,19 @@ select rollup_mode('test_rollup3','trigger');
  
 (1 row)
 
+select rollup_mode('test_rollup3b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup4','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','trigger');
  rollup_mode 
 -------------
  
@@ -541,7 +850,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -553,7 +874,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -565,7 +898,19 @@ select rollup_mode('test_rollup1','manual');
  
 (1 row)
 
+select rollup_mode('test_rollup1b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup2','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','manual');
  rollup_mode 
 -------------
  
@@ -577,7 +922,19 @@ select rollup_mode('test_rollup3','manual');
  
 (1 row)
 
+select rollup_mode('test_rollup3b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup4','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','manual');
  rollup_mode 
 -------------
  
@@ -589,7 +946,19 @@ select rollup_mode('test_rollup1','trigger');
  
 (1 row)
 
+select rollup_mode('test_rollup1b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup2','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','trigger');
  rollup_mode 
 -------------
  
@@ -601,7 +970,19 @@ select rollup_mode('test_rollup3','trigger');
  
 (1 row)
 
+select rollup_mode('test_rollup3b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup4','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','trigger');
  rollup_mode 
 -------------
  
@@ -613,79 +994,19 @@ select rollup_mode('test_rollup1','trigger');
  
 (1 row)
 
+select rollup_mode('test_rollup1b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup2','trigger');
  rollup_mode 
 -------------
  
 (1 row)
 
-select rollup_mode('test_rollup3','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','trigger');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup3','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup3','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup4','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup1','manual');
- rollup_mode 
--------------
- 
-(1 row)
-
-select rollup_mode('test_rollup2','manual');
+select rollup_mode('test_rollup2b','trigger');
  rollup_mode 
 -------------
  
@@ -697,7 +1018,163 @@ select rollup_mode('test_rollup3','trigger');
  
 (1 row)
 
+select rollup_mode('test_rollup3b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup4','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup1','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup1b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup3','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup3b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup1','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup1b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup3','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup3b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup1','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup1b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup3','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup3b','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4','trigger');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','trigger');
  rollup_mode 
 -------------
  
@@ -736,7 +1213,19 @@ select do_rollup('test_rollup1');
  (209,234)
 (1 row)
 
+select do_rollup('test_rollup1b');
+ do_rollup 
+-----------
+ (209,234)
+(1 row)
+
 select do_rollup('test_rollup2');
+ do_rollup 
+-----------
+ (209,234)
+(1 row)
+
+select do_rollup('test_rollup2b');
  do_rollup 
 -----------
  (209,234)
@@ -748,7 +1237,19 @@ select do_rollup('test_rollup3');
  (,)
 (1 row)
 
+select do_rollup('test_rollup3b');
+ do_rollup 
+-----------
+ (,)
+(1 row)
+
 select do_rollup('test_rollup4');
+ do_rollup 
+-----------
+ (,)
+(1 row)
+
+select do_rollup('test_rollup4b');
  do_rollup 
 -----------
  (,)
@@ -760,7 +1261,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -772,7 +1285,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  
@@ -784,7 +1309,19 @@ select rollup_mode('test_rollup1','manual');
  
 (1 row)
 
+select rollup_mode('test_rollup1b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup2','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup2b','manual');
  rollup_mode 
 -------------
  
@@ -796,7 +1333,19 @@ select rollup_mode('test_rollup3','manual');
  
 (1 row)
 
+select rollup_mode('test_rollup3b','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
 select rollup_mode('test_rollup4','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+select rollup_mode('test_rollup4b','manual');
  rollup_mode 
 -------------
  
@@ -835,7 +1384,19 @@ select do_rollup('test_rollup1',5);
  (235,240)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (235,240)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (235,240)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (235,240)
@@ -847,7 +1408,19 @@ select do_rollup('test_rollup3',5);
  (235,240)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (235,240)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (235,240)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (235,240)
@@ -859,7 +1432,19 @@ select do_rollup('test_rollup1',5);
  (241,246)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (241,246)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (241,246)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (241,246)
@@ -871,7 +1456,19 @@ select do_rollup('test_rollup3',5);
  (241,246)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (241,246)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (241,246)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (241,246)
@@ -883,7 +1480,19 @@ select do_rollup('test_rollup1',5);
  (247,252)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (247,252)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (247,252)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (247,252)
@@ -895,7 +1504,19 @@ select do_rollup('test_rollup3',5);
  (247,252)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (247,252)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (247,252)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (247,252)
@@ -907,7 +1528,19 @@ select do_rollup('test_rollup1',5);
  (253,258)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (253,258)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (253,258)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (253,258)
@@ -919,7 +1552,19 @@ select do_rollup('test_rollup3',5);
  (253,258)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (253,258)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (253,258)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (253,258)
@@ -931,7 +1576,19 @@ select do_rollup('test_rollup1',5);
  (259,260)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (259,260)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (259,260)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (259,260)
@@ -943,7 +1600,19 @@ select do_rollup('test_rollup3',5);
  (259,260)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (259,260)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (259,260)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (259,260)
@@ -955,7 +1624,19 @@ select do_rollup('test_rollup1',5);
  (261,260)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (261,260)
@@ -967,7 +1648,19 @@ select do_rollup('test_rollup3',5);
  (261,260)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (261,260)
@@ -979,7 +1672,19 @@ select do_rollup('test_rollup1',5);
  (261,260)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (261,260)
@@ -991,7 +1696,19 @@ select do_rollup('test_rollup3',5);
  (261,260)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (261,260)
@@ -1003,7 +1720,19 @@ select do_rollup('test_rollup1',5);
  (261,260)
 (1 row)
 
+select do_rollup('test_rollup1b',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
 select do_rollup('test_rollup2',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
+select do_rollup('test_rollup2b',5);
  do_rollup 
 -----------
  (261,260)
@@ -1015,7 +1744,19 @@ select do_rollup('test_rollup3',5);
  (261,260)
 (1 row)
 
+select do_rollup('test_rollup3b',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
 select do_rollup('test_rollup4',5);
+ do_rollup 
+-----------
+ (261,260)
+(1 row)
+
+select do_rollup('test_rollup4b',5);
  do_rollup 
 -----------
  (261,260)
@@ -1027,7 +1768,19 @@ select assert_rollup('test_rollup1');
  
 (1 row)
 
+select assert_rollup('test_rollup1b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2b');
  assert_rollup 
 ---------------
  
@@ -1039,7 +1792,19 @@ select assert_rollup('test_rollup3');
  
 (1 row)
 
+select assert_rollup('test_rollup3b');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
 select assert_rollup('test_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup4b');
  assert_rollup 
 ---------------
  

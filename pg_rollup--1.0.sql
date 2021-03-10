@@ -560,6 +560,41 @@ RETURNS VOID AS $$
     sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
     is_temp = plpy.execute(sql)[0]['is_temp']
 
+    # compute the information needed for manual/cron rollups
+    if key:
+        event_id_sequence_name = f"{table_name}_{key}_seq"
+        rollup_column = key
+    else:
+        # no key was given, so we try to use the primary key
+        sql=f'''
+        SELECT ind_column.attname AS pk
+        FROM pg_class tbl
+          INNER JOIN pg_index ind ON ind.indrelid = tbl.oid
+          INNER JOIN pg_class ind_table ON ind_table.oid = ind.indexrelid
+          INNER JOIN pg_attribute ind_column ON ind_column.attrelid = ind_table.oid
+        WHERE tbl.relname = '{table_name}'
+          AND ind.indisprimary;
+        '''
+        pks = list(plpy.execute(sql))
+
+        event_id_sequence_name = None
+        rollup_column = None
+        if len(pks) == 0:
+            plpy.warning(f'no primary key in table {table_name}')
+        elif len(pks) > 1:
+            plpy.warning(f'multi-column primary key in table {table_name}')
+        else:
+            event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
+            rollup_column = pks[0]['pk']
+
+    # verify that the computed sequence exists in the db
+    sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
+    matches = list(plpy.execute(sql))
+    if len(matches) == 0:
+        plpy.warning(f'sequence "{event_id_sequence_name}" not found in table')
+        event_id_sequence_name = None
+        rollup_column = None
+
     # constuct the sql statements for generating the rollup, and execute them
     # the error checking above should guarantee that there are no SQL errors below
     sqls = pg_rollup.Rollup(
@@ -569,20 +604,21 @@ RETURNS VOID AS $$
         rollup_name,
         process_list(wheres_list, 'key'),
         process_list(rollups_list, 'algebra', parse_algebra=True),
-        key
+        rollup_column
     ).create()
     for s in sqls:
         plpy.execute(s)
 
-    # insert into the pg_rollup table
-    if key:
-        event_id_sequence_name = f"'{table_name}_{key}_seq'"
-        rollup_column = key
+    # register the rollup in the pg_rollup table
+    if rollup_column is None:
+        plpy.warning(f'event_id_sequence_name={event_id_sequence_name}')
+        plpy.warning('no valid sequence found for manual/cron rollups; the only available rollup type is trigger')
+        rollup_column_str = 'NULL'
+        event_id_sequence_name_str = 'NULL'
     else:
-        # FIXME: set rollup_column to primary key
-        event_id_sequence_name = 'NULL'
-        rollup_column = None
-    plpy.execute(f"insert into pg_rollup (rollup_name, table_name, rollup_column, event_id_sequence_name, sql, mode) values ('{rollup_name}','{table_name}','{rollup_column}',{event_id_sequence_name},'{rollup_name}_raw_manualrollup','init')")
+        rollup_column_str = "'"+rollup_column+"'"
+        event_id_sequence_name_str = "'"+event_id_sequence_name+"'"
+    plpy.execute(f"insert into pg_rollup (rollup_name, table_name, rollup_column, event_id_sequence_name, sql, mode) values ('{rollup_name}','{table_name}',{rollup_column_str},{event_id_sequence_name_str},'{rollup_name}_raw_manualrollup','init')")
 
     # set the rollup mode
     plpy.execute("select rollup_mode('"+rollup_name+"','"+mode+"')")
@@ -598,6 +634,9 @@ RETURNS VOID AS $func$
     
     sql = (f"select * from pg_rollup where rollup_name='{rollup_name}'")
     pg_rollup = plpy.execute(sql)[0]
+
+    if mode != 'trigger' and pg_rollup['event_id_sequence_name'] is None:
+        plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
 
     ########################################    
     # turn off the old mode
