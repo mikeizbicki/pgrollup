@@ -339,7 +339,12 @@ BEGIN
      * We do a SELECT .. FOR UPDATE on the row in the rollup table to prevent
      * aggregations from running concurrently.
      */
-    SELECT table_name, last_aggregated_id+1, LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
+    -- FIXME:
+    -- the COALESCEs here are assuming that the sequence is positive;
+    -- that's the default value, but these can be changed;
+    -- the *REALLY* correct thing to do here is to extract the minimum value from the sequence and use that
+    --SELECT table_name, COALESCE(last_aggregated_id+1,0), LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,COALESCE(pg_sequence_last_value(event_id_sequence_name),0))
+    SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
     FROM pg_rollup
     WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name FOR UPDATE;
@@ -403,19 +408,15 @@ BEGIN
     SELECT pg_rollup.mode INTO mode FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name;
     IF mode != 'trigger' THEN
 
-        RAISE WARNING 'a';
         PERFORM pg_sleep(delay_seconds);
 
-        RAISE WARNING 'b';
         /* determine which page views we can safely aggregate */
         SELECT window_start, window_end INTO start_id, end_id
         FROM incremental_rollup_window(rollup_name,max_rollup_size,force_safe);
 
-        RAISE WARNING 'c';
         /* exit early if there are no new page views to aggregate */
-        IF start_id > end_id THEN RETURN; END IF;
+        IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN RETURN; END IF;
 
-        RAISE WARNING 'd';
         /* this is the new code that gets the rollup command from the table
          * and executes it */
         SELECT pg_rollup.sql 
@@ -423,9 +424,7 @@ BEGIN
         FROM pg_rollup 
         WHERE pg_rollup.rollup_name = do_rollup.rollup_name;
 
-        RAISE WARNING 'e';
         EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
-        RAISE WARNING 'f';
     END IF;
 END;
 $function$;
