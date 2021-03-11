@@ -403,15 +403,19 @@ BEGIN
     SELECT pg_rollup.mode INTO mode FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name;
     IF mode != 'trigger' THEN
 
+        RAISE WARNING 'a';
         PERFORM pg_sleep(delay_seconds);
 
+        RAISE WARNING 'b';
         /* determine which page views we can safely aggregate */
         SELECT window_start, window_end INTO start_id, end_id
         FROM incremental_rollup_window(rollup_name,max_rollup_size,force_safe);
 
+        RAISE WARNING 'c';
         /* exit early if there are no new page views to aggregate */
         IF start_id > end_id THEN RETURN; END IF;
 
+        RAISE WARNING 'd';
         /* this is the new code that gets the rollup command from the table
          * and executes it */
         SELECT pg_rollup.sql 
@@ -419,7 +423,9 @@ BEGIN
         FROM pg_rollup 
         WHERE pg_rollup.rollup_name = do_rollup.rollup_name;
 
+        RAISE WARNING 'e';
         EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
+        RAISE WARNING 'f';
     END IF;
 END;
 $function$;
