@@ -339,7 +339,7 @@ BEGIN
      * We do a SELECT .. FOR UPDATE on the row in the rollup table to prevent
      * aggregations from running concurrently.
      */
-    SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
+    SELECT table_name, last_aggregated_id+1, LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
     FROM pg_rollup
     WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name FOR UPDATE;
