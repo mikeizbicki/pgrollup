@@ -7,6 +7,9 @@ The rollup table is precomputed automatically and the use of monoids ensures tha
 (All previous implementations, including the system in OracleDB, do not use monoids, and are therefore not asymptotically efficient.)
 The extension also introduces a new syntax for semantically defining these rollup tables trivially.
 
+The extension should work with any postgres version >= 10.
+See the [Limitations]() Section for details.
+
 Outline:
 1. The Problem
     1. Existing Incomplete Solution 1: Native Oracle/Postgres Implementations
@@ -18,7 +21,8 @@ Outline:
         1. HyperLogLog
         1. t-digest
     1. Adding Support for a new Monoid/Group
-1. Library Admin
+1. Library Details
+    1. Handling of `NULL` values
     1. Modes of Operation
     1. Runtime Correctness Guarantees
 1. Examples
@@ -41,34 +45,34 @@ CREATE TABLE access_logs (
 ```
 
 ```
-SELECT count(*) FROM access_logs WHERE date(access_time) = '2021-04-01';
+SELECT count(*) FROM access_logs WHERE status_code=200;
 ```
 
 ```
-CREATE MATERIALIZED VIEW access_logs_stats AS (
+CREATE MATERIALIZED VIEW access_logs_view AS (
     SELECT
-        date(access_time)           AS date
         count(*)                    AS num_connections,
         count(distinct ipaddr)      AS unique_ips,
+        min(bytes_transferred)      AS min_bytes,
+        max(bytes_transferred)      AS max_bytes,
         avg(bytes_transferred)      AS avg_bytes,
         stddev(bytes_transferred)   AS stddev_bytes,
         percentile_cont(0.5) WITHIN GROUP(ORDER BY bytes_transferred) AS median_bytes,
     FROM transactions
-    GROUP BY date(access_time)
+    GROUP BY status_code
 );
-CREATE INDEX access_logs_stats_idx ON access_logs_stats(idx);
 ```
 
 Now we can get the repeat our `SELECT` statement above as follows
 ```
-SELECT num_connections FROM access_logs_stats WHERE date = '2021-04-01';
+SELECT num_connections FROM access_logs_view WHERE status_code=200;
 ```
 This select statement takes time only O(1) instead of O(k).
 The problem, however, is what happens when we get new data to add to the table?
 In current versions of Postgres (<= version 13),
 we must fully recompute view with the following command:
 ```
-REFRESH MATERIALIZED VIEW access_logs_stats;
+REFRESH MATERIALIZED VIEW access_logs_view;
 ```
 This is an expensive operation when the underlying `access_logs` table is large---if the underlying table is 10s of terabytes,
 refreshing the view could take hours or even days!
@@ -113,35 +117,76 @@ These trigger-based solutions, however, also have significant limitations:
 [5](https://www.xaprb.com/blog/2006/07/19/3-ways-to-maintain-rollup-tables-in-sql/)
    ).
    No matter which architecture you pick, the resulting code can be hundreds of lines long, and bugs are both common, subtle, and extremely difficult to detect.
-   For example, a common class of bugs is to not handle floating point arithemetic properly and have [catestrophic cancellation](https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html) occur.
+   Common classes of bugs include:
+   1. not handling floating point arithmetic properly, resulting in [catestrophic cancellation](https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html) and silently incorrect results
+   1. not handling `NULL` values correctly, resulting in either failed `INSERT`s or silently incorrect results
+   1. writing triggers for only the `INSERT` operation, forgetting about the `UPDATE`/`DELETE` operations, resulting in silently incorrect results when those operations are used
 
    The pg\_rollup extension fully automates this entire process.
-   Rather than writing hundreds of lines of complex, error-prone trigger logic,
-   you only need to write a short 3-4 line description of your rollup table.
-   The library automatically does the rest for you.
-   The [Solution]() Section below shows the syntax.
+   Rather than writing hundreds of lines of complex, error-prone trigger logic that describes *how* to update the rollup table,
+   the pg\_rollup extension lets you write a short 3-4 line semantic description of *what* your rollup table should contain.
+   The library automatically implements the *how* for you.
+   The [Solution]() Section below shows the syntax and implementation details.
 
 1. Perhaps surprisingly, many existing hand-written rollup table solutions are significantly faster than the native Oracle/Postgres solutions because they use monoids to make their code asymptotically efficient.
    For example, you can find advanced monoid solutions based on the [HyperLogLog](https://www.citusdata.com/blog/2017/06/30/efficient-rollup-with-hyperloglog-on-postgres/) and the [t-digest](https://stackify.com/sql-percentile-aggregates-and-rollups-with-postgresql-and-t-digest/) at the preceding links.
 
-   This library automates the process of implementing these monoids in your database rollup tables,
-   and also provides a centeralized references of all the existing monoids currently implemented in postgres.
-   See the [Monoids]() section below for a list of currently implemented monoids and instructions on how to use them with the pg\_rollup library.
+   This library automates the process of implementing these monoids/groups in your database rollup tables,
+   and also provides a centralized reference of all the existing monoids/groups currently implemented in postgres.
+   See the [Monoids/Groups]() section below for a list of currently implemented monoids/groups and instructions on how to use them with the pg\_rollup library.
 
 1. Triggers can impose significant overhead on the `INSERT`/`UPDATE`/`DELETE` operations of the database.
    A statement that invokes a trigger is not done executing until all of the triggers are done executing,
    and triggers cannot execute in parallel.
-   This implies that a table with many rollups will suffer significant performance degredation when modifying its contents.
+   This implies that a table with many rollups will suffer significant performance degradation when modifying its contents.
 
    The pg\_rollup extension solves this problem by removing the need for these expensive triggers.
    The updates to the rollup tables can happen fully in parallel in background cron processes,
    so `INSERT`/`UPDATE`/`DELETE` performance remains exactly as it did before.
    The [Modes]() Section below describes the implementation details for how this works internally.
   
+## The Solution
 
-## The (Complete) Solution
+The pg_rollup extension provides a simple interface for creating rollups that solves all of the problems of the previous solutions.
+The following code loads the extension:
 
+```
+CREATE LANGUAGE pgplpython3u;
+CREATE EXTENSION pg_rollup;
+```
 
+The current implementation of pg\_rollup requires the `pgplpython3u` language and python >= 3.6.
+For a discussion of why python is required, see the [Limitations]() section below.
+
+In order to fully demonstrate the power of the pg\_rollup extension, we will also load the `hll` and `tdigest` extensions below:
+```
+CREATE EXTENSION hll;
+CREATE EXTENSION tdigest;
+```
+These extensions are not strictly required to be loaded,
+and the functionality of pg\_rollup will gracefully degrade if they are not present.
+
+We can now create a managed rollup table that represents the same information as our materialized view above with the following command:
+```
+SELECT create_rollup(
+    'access_logs',
+    'access_logs_rollup',
+    rollups => $$
+        count(*)                    AS num_connections,
+        hll(ipaddr)                 AS hll_ips,
+        min(bytes_transferred)      AS min_bytes,
+        max(bytes_transferred)      AS max_bytes,
+        avg(bytes_transferred)      AS avg_bytes,
+        stddev(bytes_transferred)   AS stddev_bytes,
+        tdigest(bytes_transferred)  AS tdigest_bytes
+    $$,
+    wheres => $$
+        status_code
+    $$
+);
+```
 
 Limitations:
 1. only supports a single table, and not views/joins
+
+1. Internally uses 
