@@ -73,3 +73,77 @@ insert into testid (name,num) values
 
 select do_rollup('testid_rollup1');
 select assert_rollup('testid_rollup1');
+
+
+
+create temporary table testid2 (
+    id int generated always as identity primary key,
+    name text,
+    num int
+);
+
+insert into testid2 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
+
+select create_rollup(
+    'testid2',
+    'testid2_rollup1',
+    wheres => 'name',
+    mode => 'manual'
+);
+
+insert into testid2 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 1),
+    (NULL, 8),
+    (NULL, 9),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL),
+    (NULL, NULL);
+
+select do_rollup('testid2_rollup1');
+select assert_rollup('testid2_rollup1');
