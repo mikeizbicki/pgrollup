@@ -430,15 +430,245 @@ END;
 $function$;
 
 
+CREATE OR REPLACE FUNCTION create_rollup(text TEXT)
+RETURNS VOID AS $$
+    import pg_rollup
+    cmds = pg_rollup.parse_create(text)
+    for cmd in cmds:
+        sql = f'''SELECT create_rollup(
+            '{cmd['table_name']}',
+            '{cmd['rollup_name']}',
+            rollups => $rollups$
+            {cmd['columns']}
+            $rollups$,
+            wheres => $wheres$
+            {cmd['groups']}
+            $wheres$
+        );'''
+        res = plpy.execute(sql)
+$$
+LANGUAGE plpython3u;
+
+
+CREATE OR REPLACE FUNCTION create_rollup_internal(
+    table_name  REGCLASS,
+    rollup_name TEXT,
+    columns TEXT[],
+    groups TEXT[] DEFAULT NULL,
+    tablespace TEXT DEFAULT NULL,
+    key TEXT DEFAULT NULL,
+    mode TEXT DEFAULT NULL
+    )
+RETURNS VOID AS $$
+    import pg_rollup
+    import re
+    import collections
+
+    def get_type(expr):
+        '''
+        helper funcions that returns the type of expr
+        '''
+        sql = f'select {expr} from {table_name} limit 1;'
+        res = plpy.execute(sql)
+        t_oid = res.coltypes()[0]
+        sql = f'select typname from pg_type where oid={t_oid} limit 1;'
+        type = plpy.execute(sql)[0]['typname']
+        return type
+
+    # if no mode provided, calculate the default mode
+    global mode
+    if mode is None:
+        mode = plpy.execute("select value from pg_rollup_settings where name='default_mode';")[0]['value'];
+        if mode is None:
+            mode = 'trigger'
+
+    # if no tablespace provided, calculate the default tablespace
+    global tablespace
+    if tablespace is None:
+        # FIXME: the default tablespace is not guaranteed to be "pg_default"
+        tablespace_name = 'pg_default'
+    else:
+        tablespace_name = tablespace
+
+    # extract a list of wheres and rollups from the input parameters
+    global groups
+    if groups is None:
+        groups=[]
+
+    groups_list = []
+    for value,name in groups:
+        groups_list.append(pg_rollup.Key(value,get_type(value),name,None))
+
+    # generate the columns_list
+    #columns_list = process_list(columns, 'algebra', parse_algebra=True),
+    error_str = 'columns'
+    columns_list = []
+    if True:
+        for k in columns:
+            d = pg_rollup.parse_algebra(k)
+            value = d['expr']
+            name = d['name']
+            algebra = d['algebra'].strip()
+            type = get_type(value)
+
+            # if the name has a ? inside of it, it will not be a valid name, so we through an error;
+            # this occurs when no name is specified, and postgresql cannot infer a good name for the column
+            if '?' in name:
+                plpy.error(f'invalid name for {error_str}: {k}, consider using the syntax: {k} AS column_name')
+
+            # the value/type/name have been successfully extracted,
+            # and so we add them to the ret variable
+            sql = f"select * from algebras where name='{algebra}';"
+            res = list(plpy.execute(sql))
+            if len(res)==1:
+                algebra_dictionary = res[0]
+                columns_list.append(pg_rollup.Key(value,type,name,algebra_dictionary))
+            else:
+                plpy.error(f'algbera {algebra} not found in the algebras table')
+
+            # add dependencies to ks if they are not present
+            deps = []
+            for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['plus']):
+                deps.append(match.group(1))
+            if algebra_dictionary['plus'].strip().lower() == 'null':
+                for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['view']):
+                    deps.append(match.group(1))
+            deps = set(deps)
+            if algebra in deps:
+                deps.remove(algebra)
+            for dep in deps:
+                matched = False
+                for k2 in columns:
+                    if f'{dep}({value})' in k2:
+                        matched = True
+                        break
+                if not matched:
+                    columns.append(f'{dep}({value})')
+
+        # if there are any duplicate names, throw an error
+        names = [k.name for k in columns_list]
+        duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
+        if len(duplicate_names) > 0:
+            plpy.error(f'duplicate names in {error_str}: '+str(duplicate_names))
+
+
+    # check if the table is temporary
+    sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
+    is_temp = plpy.execute(sql)[0]['is_temp']
+
+    # compute the information needed for manual/cron rollups
+    if key:
+        event_id_sequence_name = f"{table_name}_{key}_seq"
+        rollup_column = key
+    else:
+        # no key was given, so we try to use the primary key
+        sql=f'''
+        SELECT ind_column.attname AS pk
+        FROM pg_class tbl
+          INNER JOIN pg_index ind ON ind.indrelid = tbl.oid
+          INNER JOIN pg_class ind_table ON ind_table.oid = ind.indexrelid
+          INNER JOIN pg_attribute ind_column ON ind_column.attrelid = ind_table.oid
+        WHERE tbl.relname = '{table_name}'
+          AND ind.indisprimary;
+        '''
+        pks = list(plpy.execute(sql))
+
+        event_id_sequence_name = None
+        rollup_column = None
+        if len(pks) == 0:
+            plpy.warning(f'no primary key in table {table_name}')
+        elif len(pks) > 1:
+            plpy.warning(f'multi-column primary key in table {table_name}')
+        else:
+            event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
+            rollup_column = pks[0]['pk']
+
+    # verify that the computed sequence exists in the db
+    sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
+    matches = list(plpy.execute(sql))
+    if len(matches) == 0:
+        plpy.warning(f'sequence "{event_id_sequence_name}" not found in table')
+        event_id_sequence_name = None
+        rollup_column = None
+
+    # constuct the sql statements for generating the rollup, and execute them
+    # the error checking above should guarantee that there are no SQL errors below
+    sqls = pg_rollup.Rollup(
+        table_name,
+        is_temp,
+        tablespace_name,
+        rollup_name,
+        groups_list,
+        columns_list,
+        rollup_column
+    ).create()
+    for s in sqls:
+        plpy.execute(s)
+
+    # register the rollup in the pg_rollup table
+    if rollup_column is None:
+        plpy.warning(f'event_id_sequence_name={event_id_sequence_name}')
+        plpy.warning('no valid sequence found for manual/cron rollups; the only available rollup type is trigger')
+        rollup_column_str = 'NULL'
+        event_id_sequence_name_str = 'NULL'
+    else:
+        rollup_column_str = "'"+rollup_column+"'"
+        event_id_sequence_name_str = "'"+event_id_sequence_name+"'"
+    plpy.execute(f"insert into pg_rollup (rollup_name, table_name, rollup_column, event_id_sequence_name, sql, mode) values ('{rollup_name}','{table_name}',{rollup_column_str},{event_id_sequence_name_str},'{rollup_name}_raw_manualrollup','init')")
+
+    # set the rollup mode
+    plpy.execute("select rollup_mode('"+rollup_name+"','"+mode+"')")
+
+    # insert values into the rollup
+    plpy.execute(f"select {rollup_name}_raw_reset();")
+$$
+LANGUAGE plpython3u;
+
 CREATE OR REPLACE FUNCTION create_rollup(
     table_name  REGCLASS,
     rollup_name TEXT,
-    tablespace TEXT DEFAULT 'pg_default', -- FIXME: set to NULL
+    tablespace TEXT DEFAULT NULL,
     wheres TEXT DEFAULT '',
     rollups TEXT DEFAULT 'count(*) as count',
     key TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL
     )
+RETURNS VOID AS $$
+    import pg_rollup
+
+    wheres_list = pg_rollup._extract_arguments(wheres)
+    if len(wheres_list)==1 and wheres_list[0].strip()=='':
+        wheres_list=[]
+
+    groups_list = []
+    for group in wheres_list:
+        group = group.strip()
+        if 'AS' in group:
+            value,name = group.split('AS')
+            value = value.strip()
+            name = name.strip()
+        else:
+            value = group
+            name = group.replace('(','_').replace(')','_')
+        groups_list.append([value,name])
+
+    rollups_list = pg_rollup._extract_arguments(rollups)
+    if len(rollups_list)==1 and rollups_list[0].strip()=='':
+        rollups_list=[]
+
+    sql = f'''SELECT create_rollup_internal(
+        $1,
+        $2,
+        columns => $3,
+        groups => $4,
+        tablespace => $5,
+        key => $6,
+        mode => $7
+    );'''
+    plan = plpy.prepare(sql,['regclass','text','text[]','text[]','text','text','text'])
+    plpy.execute(plan, [table_name,rollup_name,rollups_list,groups_list,tablespace,key,mode])
+$$ language plpython3u;
+/*
 RETURNS VOID AS $$
     import pg_rollup
     import re
@@ -482,7 +712,7 @@ RETURNS VOID AS $$
                 d = pg_rollup.parse_algebra(k)
                 value = d['expr']
                 name = d['name']
-                algebra = d['algebra']
+                algebra = d['algebra'].strip()
 
             # extract the type and a default name from the value
             sql = f'select {value} from {table_name} limit 1;'
@@ -546,9 +776,8 @@ RETURNS VOID AS $$
     # if no tablespace provided, calculate the default tablespace
     global tablespace
     if tablespace is None:
-        tablespace_name = plpy.execute('show default_tablespace;')[0]['default_tablespace'];
-        if tablespace_name is None:
-            tablespace_name = 'pg_default'
+        # FIXME: the default tablespace is not guaranteed to be "pg_default"
+        tablespace_name = 'pg_default'
     else:
         tablespace_name = tablespace
 
@@ -632,7 +861,7 @@ RETURNS VOID AS $$
     plpy.execute(f"select {rollup_name}_raw_reset();")
 $$
 LANGUAGE plpython3u;
-
+*/
 
 CREATE OR REPLACE FUNCTION rollup_mode(rollup_name REGCLASS, mode TEXT)
 RETURNS VOID AS $func$

@@ -1,5 +1,6 @@
 import collections
 import re
+from lark import Lark
 
 Key = collections.namedtuple('Key', ['value','type','name','algebra'])
 
@@ -106,6 +107,91 @@ def _add_namespace(s, namespace):
         else:
             chunks_namespaced.append(re.sub(r'([^:]|^)\s*\b([\w_]+)\b([^.(]|$)', r'\g<1>'+namespace+r'.\g<2>\g<3>', chunk))
     return "'".join(chunks_namespaced)
+
+
+def unparse(tree):
+    if hasattr(tree,'children'):
+        if tree.data == 'blurb':
+            return '(' + ''.join([unparse(child) for child in tree.children]) + ')'
+        elif tree.data == 'as':
+            return ' AS ' + ' '.join([unparse(child) for child in tree.children])
+        else:
+            return ' '.join([unparse(child) for child in tree.children])
+    else:
+        return str(tree)
+
+
+def parse_create(text):
+    '''
+    >>> parse_create('create incremental materialized view test_rollup as (select count(*) from test);')
+    {'table': 'test', 'rollup_name': 'test_rollup', 'rollups': ' count(*) ', 'wheres': ''}
+    >>> parse_create('create incremental materialized view test_rollup as (select count(*) from test group by date, url );')
+    {'table': 'test', 'rollup_name': 'test_rollup', 'rollups': ' count(*) ', 'wheres': 'date, url '}
+    '''
+    parser = Lark(r"""
+    value: create_view ";"?
+
+    create_view: "CREATE"i "INCREMENTAL"i "MATERIALIZED"i "VIEW"i name "AS"i "(" select ")"
+
+    name: /[a-zA-Z_0-9]+/ | ESCAPED_STRING
+
+    select: "SELECT"i columns "FROM"i name ("GROUP"i "BY"i groups)?
+
+    columns: column comma columns | column
+    column: name "(" blurb ")" (as name)?
+
+    blurb: /./+
+    comma: /,/
+    as: "AS"i
+
+    groups: group comma groups | group
+    group: name
+
+    %import common.ESCAPED_STRING
+    %import common.WS
+    %ignore WS
+    """, start='value')
+    tree = parser.parse(text)
+
+    infos = []
+    for child in tree.children:
+        rollup_name = unparse(child.children[0].children[0])
+        table_name = unparse(child.children[1].children[1].children[0])
+        columns = unparse(child.children[1].children[0])
+        try:
+            groups = unparse(child.children[1].children[2])
+        except IndexError:
+            groups = ''
+        infos.append({
+            'table_name' : table_name,
+            'rollup_name' : rollup_name,
+            'groups' : groups,
+            'columns' : columns
+            })
+    return infos
+    # FIXME: implement unparse
+    print("x=",x)
+    create_regex_str = r'''CREATE\s+INCREMENTAL\s+MATERIALIZED\s+VIEW\s+(\w+)\s+AS\s*\(\s*SELECT(.*)FROM\s+(\w+)(\s+GROUP\s+BY\s+(.*))?\)\s*;?'''
+    create_regex = re.compile(create_regex_str, re.IGNORECASE|re.MULTILINE)
+    result = create_regex.match(text)
+    if result:
+        return {
+            'table' : result.groups()[2],
+            'rollup_name' : result.groups()[0],
+            'rollups' : result.groups()[1],
+            'wheres' : result.groups()[4] if result.groups()[4] is not None else ''
+            }
+
+"""
+text = '''
+CREATE      INCREMENTAL MATERIALIZED VIEW example AS (SELECT count(*) AS count, hll(ad aIHD P98HDAWLDKJSDE DLKAJSD FN" SDFASD FASD ) FROM table GROUP BY a, b);
+CREATE      INCREMENTAL MATERIALIZED VIEW example AS (SELECT count(*) AS count, hll(ad aIHD P98HDAWLDKJSDE DLKAJSD FN" SDFASD FASD ) FROM table GROUP BY a, b);
+'''
+x = parse_create(text)
+import pprint
+pprint.pprint(x)
+asd
+"""
 
 
 def parse_algebra(text):

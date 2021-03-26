@@ -56,6 +56,6 @@ RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*
 # copy over the project
 COPY . /tmp/pg_rollup
 COPY postgresql.conf /etc/postgresql.conf.pg_rollup
-RUN pip3 install .
+RUN pip3 install -r requirements.txt && pip3 install .
 RUN make USE_PGXS=1 \
  && make USE_PGXS=1 install
