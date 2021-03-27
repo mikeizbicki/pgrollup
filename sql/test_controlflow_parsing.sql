@@ -36,41 +36,35 @@ insert into testparsing (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup($$
+select pgrollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup1 AS (
     SELECT
         count(*) AS count
     FROM testparsing
     GROUP BY name
 );
-$$);
 
-select create_rollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup2 AS (
-    select count(*) as count
+    select count(*) AS count
     from testparsing
     group by name,num
 );
-$$);
 
-select create_rollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup3 AS (
     select
-        sum(num) as sum,
-        count(*) as count_all,
+        sum(num) AS sum,
+        count(*) AS count_all,
         count(num),
         max(num),
         min(num)
     from testparsing
     group by name
 );
-$$);
 
-select create_rollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup4 AS (
     select
-        sum(num) as sum,
-        count(*) as count_all,
+        sum(num) AS sum,
+        count(*) AS count_all,
         count(num),
         max(num),
         min(num)

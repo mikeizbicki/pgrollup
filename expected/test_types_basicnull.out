@@ -94,15 +94,15 @@ select assert_rollup('nulltest_rollup4');
 insert into nulltest (name,num) values
     (NULL, NULL);
 select * from nulltest_rollup3_raw;
- sum | count_all | count(num) | max(num) | min(num) | where_name 
------+-----------+------------+----------+----------+------------
-   0 |         2 |          0 |          |          | 
+ sum(num) | count(*) | count(num) | max(num) | min(num) | group_name 
+----------+----------+------------+----------+----------+------------
+        0 |        2 |          0 |          |          | 
 (1 row)
 
 select * from nulltest_rollup3_groundtruth_raw;
- sum | count_all | count(num) | max(num) | min(num) | where_name 
------+-----------+------------+----------+----------+------------
-   0 |         2 |          0 |          |          | 
+ sum(num) | count(*) | count(num) | max(num) | min(num) | group_name 
+----------+----------+------------+----------+----------+------------
+        0 |        2 |          0 |          |          | 
 (1 row)
 
 select assert_rollup('nulltest_rollup1');
@@ -157,25 +157,25 @@ insert into nulltest (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 select * from nulltest_rollup3_raw;
- sum | count_all | count(num) | max(num) | min(num) | where_name 
------+-----------+------------+----------+----------+------------
-  22 |        13 |          7 |        9 |        1 | 
-  15 |         5 |          5 |        5 |        1 | alice
-   5 |         1 |          1 |        5 |        5 | elliot
-   4 |         1 |          1 |        4 |        4 | dave
-  15 |         3 |          3 |        5 |        5 | bill
-   6 |         5 |          4 |        3 |        1 | charlie
+ sum(num) | count(*) | count(num) | max(num) | min(num) | group_name 
+----------+----------+------------+----------+----------+------------
+       22 |       13 |          7 |        9 |        1 | 
+       15 |        5 |          5 |        5 |        1 | alice
+        5 |        1 |          1 |        5 |        5 | elliot
+        4 |        1 |          1 |        4 |        4 | dave
+       15 |        3 |          3 |        5 |        5 | bill
+        6 |        5 |          4 |        3 |        1 | charlie
 (6 rows)
 
 select * from nulltest_rollup3_groundtruth_raw;
- sum | count_all | count(num) | max(num) | min(num) | where_name 
------+-----------+------------+----------+----------+------------
-  22 |        13 |          7 |        9 |        1 | 
-   6 |         5 |          4 |        3 |        1 | charlie
-   4 |         1 |          1 |        4 |        4 | dave
-  15 |         3 |          3 |        5 |        5 | bill
-   5 |         1 |          1 |        5 |        5 | elliot
-  15 |         5 |          5 |        5 |        1 | alice
+ sum(num) | count(*) | count(num) | max(num) | min(num) | group_name 
+----------+----------+------------+----------+----------+------------
+       22 |       13 |          7 |        9 |        1 | 
+        6 |        5 |          4 |        3 |        1 | charlie
+        4 |        1 |          1 |        4 |        4 | dave
+       15 |        3 |          3 |        5 |        5 | bill
+        5 |        1 |          1 |        5 |        5 | elliot
+       15 |        5 |          5 |        5 |        1 | alice
 (6 rows)
 
 select assert_rollup('nulltest_rollup1');
@@ -280,24 +280,24 @@ select assert_rollup('nulltest_rollup4');
 (1 row)
 
 select * from nulltest_rollup3_raw;
- sum | count_all | count(num) | max(num) | min(num) | where_name 
------+-----------+------------+----------+----------+------------
-  44 |        25 |         14 |        9 |        1 | 
-  30 |        10 |         10 |        5 |        1 | alice
-  10 |         2 |          2 |        5 |        5 | elliot
-   8 |         2 |          2 |        4 |        4 | dave
-  30 |         6 |          6 |        5 |        5 | bill
-  12 |        10 |          8 |        3 |        1 | charlie
+ sum(num) | count(*) | count(num) | max(num) | min(num) | group_name 
+----------+----------+------------+----------+----------+------------
+       44 |       25 |         14 |        9 |        1 | 
+       30 |       10 |         10 |        5 |        1 | alice
+       10 |        2 |          2 |        5 |        5 | elliot
+        8 |        2 |          2 |        4 |        4 | dave
+       30 |        6 |          6 |        5 |        5 | bill
+       12 |       10 |          8 |        3 |        1 | charlie
 (6 rows)
 
 select * from nulltest_rollup3_groundtruth_raw;
- sum | count_all | count(num) | max(num) | min(num) | where_name 
------+-----------+------------+----------+----------+------------
-  44 |        25 |         14 |        9 |        1 | 
-  12 |        10 |          8 |        3 |        1 | charlie
-   8 |         2 |          2 |        4 |        4 | dave
-  30 |         6 |          6 |        5 |        5 | bill
-  10 |         2 |          2 |        5 |        5 | elliot
-  30 |        10 |         10 |        5 |        1 | alice
+ sum(num) | count(*) | count(num) | max(num) | min(num) | group_name 
+----------+----------+------------+----------+----------+------------
+       44 |       25 |         14 |        9 |        1 | 
+       12 |       10 |          8 |        3 |        1 | charlie
+        8 |        2 |          2 |        4 |        4 | dave
+       30 |        6 |          6 |        5 |        5 | bill
+       10 |        2 |          2 |        5 |        5 | elliot
+       30 |       10 |         10 |        5 |        1 | alice
 (6 rows)
 

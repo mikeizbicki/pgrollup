@@ -430,22 +430,36 @@ END;
 $function$;
 
 
-CREATE OR REPLACE FUNCTION create_rollup(text TEXT)
+CREATE OR REPLACE FUNCTION pgrollup(text TEXT)
 RETURNS VOID AS $$
-    import pg_rollup
-    cmds = pg_rollup.parse_create(text)
+    import pg_rollup.parsing
+    cmds = pg_rollup.parsing.parse_create(text)
     for cmd in cmds:
-        sql = f'''SELECT create_rollup(
-            '{cmd['table_name']}',
-            '{cmd['rollup_name']}',
-            rollups => $rollups$
-            {cmd['columns']}
-            $rollups$,
-            wheres => $wheres$
-            {cmd['groups']}
-            $wheres$
+        sql = f'''
+        SELECT create_rollup_internal(
+            $1,
+            $2,
+            columns => $3,
+            groups => $4,
+            where_clause => $5,
+            having_clause => $6
         );'''
-        res = plpy.execute(sql)
+        plan = plpy.prepare(sql,[
+            'regclass',
+            'text',
+            'text[]',
+            'text[]',
+            'text',
+            'text',
+            ])
+        plpy.execute(plan,[
+            cmd['table_name'],
+            cmd['rollup_name'],
+            cmd['columns'],
+            cmd['groups'],
+            cmd['where_clause'],
+            cmd['having_clause'],
+            ])
 $$
 LANGUAGE plpython3u;
 
@@ -455,11 +469,14 @@ CREATE OR REPLACE FUNCTION create_rollup_internal(
     rollup_name TEXT,
     columns TEXT[],
     groups TEXT[] DEFAULT NULL,
+    where_clause TEXT DEFAULT NULL,
+    having_clause TEXT DEFAULT NULL,
     tablespace TEXT DEFAULT NULL,
     key TEXT DEFAULT NULL,
-    mode TEXT DEFAULT NULL
+    mode TEXT DEFAULT NULL,
+    dry_run BOOLEAN DEFAULT FALSE
     )
-RETURNS VOID AS $$
+RETURNS TEXT AS $$
     import pg_rollup
     import re
     import collections
@@ -500,21 +517,35 @@ RETURNS VOID AS $$
         groups_list.append(pg_rollup.Key(value,get_type(value),name,None))
 
     # generate the columns_list
-    #columns_list = process_list(columns, 'algebra', parse_algebra=True),
+
+    columns_view_list = []
+    for value,name in columns:
+        d = pg_rollup.parse_algebra(value + ' AS ' + name)
+        value = d['expr']
+        name = d['name']
+        algebra = d['algebra'].strip()
+        type = get_type(value)
+
+        # the value/type/name have been successfully extracted,
+        # and so we add them to the ret variable
+        sql = f"select * from algebras where name='{algebra}';"
+        res = list(plpy.execute(sql))
+        if len(res)==1:
+            algebra_dictionary = res[0]
+            columns_view_list.append(pg_rollup.Key(value,type,name,algebra_dictionary))
+        else:
+            plpy.error(f'algbera {algebra} not found in the algebras table')
+
     error_str = 'columns'
     columns_list = []
     if True:
-        for k in columns:
+        column_values = [ value for value,name in columns ]
+        for k in column_values:
             d = pg_rollup.parse_algebra(k)
             value = d['expr']
-            name = d['name']
+            name = '"'+k+'"' #d['name']
             algebra = d['algebra'].strip()
             type = get_type(value)
-
-            # if the name has a ? inside of it, it will not be a valid name, so we through an error;
-            # this occurs when no name is specified, and postgresql cannot infer a good name for the column
-            if '?' in name:
-                plpy.error(f'invalid name for {error_str}: {k}, consider using the syntax: {k} AS column_name')
 
             # the value/type/name have been successfully extracted,
             # and so we add them to the ret variable
@@ -538,18 +569,21 @@ RETURNS VOID AS $$
                 deps.remove(algebra)
             for dep in deps:
                 matched = False
-                for k2 in columns:
+                for k2 in column_values:
                     if f'{dep}({value})' in k2:
                         matched = True
                         break
                 if not matched:
-                    columns.append(f'{dep}({value})')
+                    column_values.append(f'{dep}({value})')
 
         # if there are any duplicate names, throw an error
         names = [k.name for k in columns_list]
         duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
         if len(duplicate_names) > 0:
+            plpy.warning('names='+str(names))
             plpy.error(f'duplicate names in {error_str}: '+str(duplicate_names))
+
+    columns_raw_list = columns_list
 
 
     # check if the table is temporary
@@ -599,11 +633,12 @@ RETURNS VOID AS $$
         tablespace_name,
         rollup_name,
         groups_list,
-        columns_list,
+        columns_raw_list,
+        columns_view_list,
+        where_clause,
+        having_clause,
         rollup_column
     ).create()
-    for s in sqls:
-        plpy.execute(s)
 
     # register the rollup in the pg_rollup table
     if rollup_column is None:
@@ -614,13 +649,39 @@ RETURNS VOID AS $$
     else:
         rollup_column_str = "'"+rollup_column+"'"
         event_id_sequence_name_str = "'"+event_id_sequence_name+"'"
-    plpy.execute(f"insert into pg_rollup (rollup_name, table_name, rollup_column, event_id_sequence_name, sql, mode) values ('{rollup_name}','{table_name}',{rollup_column_str},{event_id_sequence_name_str},'{rollup_name}_raw_manualrollup','init')")
+    sqls += f"""
+    insert into pg_rollup 
+        ( rollup_name
+        , table_name
+        , rollup_column
+        , event_id_sequence_name
+        , sql
+        , mode
+        )
+        values 
+        ( '{rollup_name}'
+        , '{table_name}'
+        , {rollup_column_str}
+        , {event_id_sequence_name_str}
+        , '{rollup_name}_raw_manualrollup'
+        , 'init'
+        );
+    """
 
     # set the rollup mode
-    plpy.execute("select rollup_mode('"+rollup_name+"','"+mode+"')")
+    sqls += f"""
+    select rollup_mode('{rollup_name}','{mode}');
+    """
 
     # insert values into the rollup
-    plpy.execute(f"select {rollup_name}_raw_reset();")
+    sqls += f"""
+    select {rollup_name}_raw_reset();
+    """
+
+    if not dry_run:
+        plpy.execute(sqls)
+    else:
+        return sqls
 $$
 LANGUAGE plpython3u;
 
@@ -629,7 +690,7 @@ CREATE OR REPLACE FUNCTION create_rollup(
     rollup_name TEXT,
     tablespace TEXT DEFAULT NULL,
     wheres TEXT DEFAULT '',
-    rollups TEXT DEFAULT 'count(*) as count',
+    rollups TEXT DEFAULT 'count(*) AS count',
     key TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL
     )
@@ -647,14 +708,35 @@ RETURNS VOID AS $$
             value,name = group.split('AS')
             value = value.strip()
             name = name.strip()
+        elif 'as' in group:
+            value,name = group.split('as')
+            value = value.strip()
+            name = name.strip()
         else:
             value = group
-            name = group.replace('(','_').replace(')','_')
+            name = group.replace('(','_').replace(')','_').replace('*','_')
+            #FIXME: name = '"' + value + '"'
         groups_list.append([value,name])
 
     rollups_list = pg_rollup._extract_arguments(rollups)
     if len(rollups_list)==1 and rollups_list[0].strip()=='':
         rollups_list=[]
+
+    columns_list = []
+    for column in rollups_list:
+        column = column.strip()
+        if 'AS' in column:
+            value,name = column.split('AS')
+            value = value.strip()
+            name = name.strip()
+        elif 'as' in column:
+            value,name = column.split('as')
+            value = value.strip()
+            name = name.strip()
+        else:
+            value = column
+            name = '"' + value + '"'
+        columns_list.append([value,name])
 
     sql = f'''SELECT create_rollup_internal(
         $1,
@@ -666,7 +748,7 @@ RETURNS VOID AS $$
         mode => $7
     );'''
     plan = plpy.prepare(sql,['regclass','text','text[]','text[]','text','text','text'])
-    plpy.execute(plan, [table_name,rollup_name,rollups_list,groups_list,tablespace,key,mode])
+    plpy.execute(plan, [table_name,rollup_name,columns_list,groups_list,tablespace,key,mode])
 $$ language plpython3u;
 /*
 RETURNS VOID AS $$
