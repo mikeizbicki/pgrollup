@@ -86,6 +86,18 @@ $$);
  
 (1 row)
 
+select * from testparsing_rollup5;
+ max(num) | foo 
+----------+-----
+        9 | -41
+(1 row)
+
+select * from testparsing_rollup5_raw;
+ count(*) | max(num) | sum(num) | raw_true 
+----------+----------+----------+----------
+       26 |        9 |       67 | t
+(1 row)
+
 select pgrollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup6 AS (
     select
@@ -116,18 +128,18 @@ $$);
  
 (1 row)
 
-select * from testparsing_rollup5;
- max(num) | foo 
-----------+-----
-        9 | -41
-(1 row)
-
-select * from testparsing_rollup5_raw;
- count(*) | max(num) | sum(num) | raw_true 
-----------+----------+----------+----------
-       26 |        9 |       67 | t
-(1 row)
-
+/*
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup8 AS (
+    select
+        name,
+        num
+    from testparsing
+    where
+        num > 5
+);
+$$);
+*/
 select assert_rollup('testparsing_rollup1');
  assert_rollup 
 ---------------

@@ -80,6 +80,8 @@ CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup5 AS (
     from testparsing
 );
 $$);
+select * from testparsing_rollup5;
+select * from testparsing_rollup5_raw;
 
 select pgrollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup6 AS (
@@ -103,8 +105,18 @@ CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
 );
 $$);
 
-select * from testparsing_rollup5;
-select * from testparsing_rollup5_raw;
+/*
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup8 AS (
+    select
+        name,
+        num
+    from testparsing
+    where
+        num > 5
+);
+$$);
+*/
 
 select assert_rollup('testparsing_rollup1');
 select assert_rollup('testparsing_rollup2');

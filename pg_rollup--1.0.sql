@@ -439,7 +439,10 @@ END;
 $function$;
 
 
-CREATE OR REPLACE FUNCTION pgrollup(text TEXT)
+CREATE OR REPLACE FUNCTION pgrollup(
+    text TEXT,
+    dry_run BOOLEAN DEFAULT FALSE
+)
 RETURNS VOID AS $$
     import pg_rollup.parsing
     cmds = pg_rollup.parsing.parse_create(text)
@@ -451,8 +454,9 @@ RETURNS VOID AS $$
             columns => $3,
             groups => $4,
             where_clause => $5,
-            having_clause => $6
-        );'''
+            having_clause => $6,
+            dry_run => $7
+        ) as result;'''
         plan = plpy.prepare(sql,[
             'regclass',
             'text',
@@ -460,15 +464,20 @@ RETURNS VOID AS $$
             'text[]',
             'text',
             'text',
+            'boolean',
             ])
-        plpy.execute(plan,[
+        result = plpy.execute(plan,[
             cmd['table_name'],
             cmd['rollup_name'],
             cmd['columns'],
             cmd['groups'],
             cmd['where_clause'],
             cmd['having_clause'],
+            dry_run,
             ])
+
+        if dry_run:
+            plpy.notice(str(result[0]['result']))
 $$
 LANGUAGE plpython3u;
 
@@ -487,7 +496,6 @@ CREATE OR REPLACE FUNCTION create_rollup_internal(
     )
 RETURNS TEXT AS $$
     import pg_rollup
-    import pg_rollup.deleteme
     import pg_rollup.parsing_functions
     import re
     import collections
@@ -499,28 +507,10 @@ RETURNS TEXT AS $$
         sql = f'select {expr} from {table_name} limit 1;'
         res = plpy.execute(sql)
         t_oid = res.coltypes()[0]
-        sql = f'select typname from pg_type where oid={t_oid} limit 1;'
-        type = plpy.execute(sql)[0]['typname']
-        return type
+        sql = f'select typname,typlen from pg_type where oid={t_oid} limit 1;'
+        row = plpy.execute(sql)[0]
+        return row
 
-    def column_to_key(column):
-
-        # extract key info
-        value, name = column
-        algebra = value[:value.find("(")]
-        expr = value[value.find("(")+1:value.rfind(")")]
-        type = get_type(expr)
-
-        # get the algebra dictionary
-        sql = f"select * from algebra where name='{algebra}';"
-        res = list(plpy.execute(sql))
-
-        # generate the Key
-        if len(res)==1:
-            algebra_dictionary = res[0]
-            return pg_rollup.Key(expr,type,name,algebra_dictionary)
-        else:
-            plpy.error(f'algbera {algebra} not found in the algebra table')
 
     # get a list of all algebras
     sql = f'select * from algebra;'
@@ -565,9 +555,20 @@ RETURNS TEXT AS $$
     columns_raw_list = []
     raw_columns = sorted(list(set(raw_columns)))
     for value in raw_columns:
-        key = column_to_key((value,'"'+value+'"'))
-        algebra_dictionary = key[3]
-        expr = key[0]
+        # extract key info
+        name = '"'+value+'"'
+        algebra = value[:value.find("(")]
+        expr = value[value.find("(")+1:value.rfind(")")]
+        type = get_type(expr)
+
+        # get the algebra dictionary and key
+        sql = f"select * from algebra where name='{algebra}';"
+        res = list(plpy.execute(sql))
+        if len(res)==1:
+            algebra_dictionary = res[0]
+            key = pg_rollup.Key(expr,type,name,algebra_dictionary)
+        else:
+            plpy.error(f'algbera {algebra} not found in the algebra table')
 
         # add column info
         columns_raw_list.append(key)
@@ -706,7 +707,6 @@ CREATE OR REPLACE FUNCTION create_rollup(
     )
 RETURNS VOID AS $$
     import pg_rollup
-    import pg_rollup.deleteme
 
     wheres_list = pg_rollup._extract_arguments(wheres)
     if len(wheres_list)==1 and wheres_list[0].strip()=='':

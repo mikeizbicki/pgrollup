@@ -123,7 +123,7 @@ class Rollup:
         self.rollup_column = rollup_column
 
         self.groups = [Key(k.value, k.type, 'group_'+k.name if k.name[0]!='"' else k.name,None) for k in groups]
-        self.columns_raw = columns_raw
+        self.columns_raw = sorted(columns_raw, key=lambda column: column.type['typlen'], reverse=True)
         self.columns_view = columns_view
         self.where_clause = where_clause
         self.having_clause = having_clause
@@ -158,12 +158,12 @@ class Rollup:
 f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
     (
     '''
-    '''.join([''+column.name + ' '+_algsub(column.algebra['type'],column.type) +' /*NOT NULL*/,' for column in self.columns_raw])+'''
+    '''.join([''+column.name + ' '+_algsub(column.algebra['type'],column.type['typname']) +' /*NOT NULL*/,' for column in self.columns_raw])+'''
     '''
     )+
     (
     ''',
-    '''.join([key.name + ' ' + key.type for key in self.groups])
+    '''.join([key.name + ' ' + key.type['typname'] for key in self.groups])
     if len(self.groups)>0 else '''
     raw_true BOOLEAN DEFAULT TRUE UNIQUE NOT NULL''' )+
     '''
