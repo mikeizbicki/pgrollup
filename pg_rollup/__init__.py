@@ -155,11 +155,11 @@ class Rollup:
     def create_table(self):
         temp_str = 'TEMPORARY ' if self.temporary else ''
         return (
-f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
+f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
+    '''+
     (
     '''
-    '''.join([''+column.name + ' '+_algsub(column.algebra['type'],column.type['typname']) +' /*NOT NULL*/,' for column in self.columns_raw])+'''
-    '''
+    '''.join([''+column.name + ' '+_algsub(column.algebra['type'],column.type['typname']) +',' for column in self.columns_raw])
     )+
     (
     ''',
@@ -213,15 +213,17 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                 )
             SELECT 
                 '''
-            + ''',
-            '''.join([
-                (_algsub(column.algebra['negate'],' '+''+column.name) if inverse else ' '+''+column.name)
+                + ''',
+                '''.join([
+                (_algsub(column.algebra['negate'],column.name) if inverse else ' '+''+column.name)
                 for column in self.columns_raw
             ])
             + ''.join([''',
                 '''+key.name for key in self.groups])+'''
-            FROM ( ''' + self.create_groundtruth(query) + ''' ) t
-                WHERE TRUE '''+
+            FROM ( 
+                ''' + self.create_groundtruth(query) + '''
+            ) t
+            WHERE TRUE '''+
                 ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.groups)])
                 ) if self.null_support else '')+'''
             ON CONFLICT '''
@@ -345,47 +347,47 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
 
     def create_groundtruth(self, source):
         return (
-            'SELECT'+
+                'SELECT'+
+                    (
+                    '''
+                    '''+
+                    ''',
+                    '''.join([
+                        'COALESCE('+
+                        _algsub(
+                            column.algebra['agg'],
+                            column.value
+                            )
+                        +','+column.algebra['zero']+')'
+                        +' AS '+''+column.name
+                        for column in self.columns_raw
+                        ])
+                    )+
+                    (
+                    ''','''+
+                    ''',
+                    '''.join([key.value + ' AS ' + key.name for key in self.groups])
+                    if len(self.groups)>0 else '') +
+                    '''
+                FROM ''' + source +
                 (
+                f'''
+                WHERE {self.where_clause}
                 '''
-                '''+
-                ''',
-                '''.join([
-                    'COALESCE('+
-                    _algsub(
-                        column.algebra['agg'],
-                        column.value
-                        )
-                    +','+column.algebra['zero']+')'
-                    +' AS '+''+column.name
-                    for column in self.columns_raw
-                    ])
-                )+
+                if self.where_clause else ''
+                ) +
                 (
-                ''','''+
-                ''',
-                '''.join([key.value + ' AS ' + key.name for key in self.groups])
-                if len(self.groups)>0 else '') +
+                    '''
+                GROUP BY ''' + ','.join([key.name for key in self.groups])
+                if len(self.groups)>0 else ''
+                ) +
+                (
+                f'''
+                HAVING {self.having_clause}
                 '''
-            FROM ''' + source +
-            (
-            f'''
-            WHERE {self.where_clause}
-            '''
-            if self.where_clause else ''
-            ) +
-            (
-                '''
-            GROUP BY ''' + ','.join([key.name for key in self.groups])
-            if len(self.groups)>0 else ''
-            ) +
-            (
-            f'''
-            HAVING {self.having_clause}
-            '''
-            if self.having_clause else ''
+                if self.having_clause else ''
+                )
             )
-        )
 
 
     def create_view_groundtruth(self):
@@ -471,33 +473,21 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
         CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_reset()
         RETURNS VOID LANGUAGE PLPGSQL AS $$
         BEGIN
-        TRUNCATE TABLE '''+self.rollup_table_name+''';
-        INSERT INTO '''+self.rollup_table_name+''' ('''+
+            TRUNCATE TABLE '''+self.rollup_table_name+''';
+            INSERT INTO '''+self.rollup_table_name+''' SELECT * FROM ''' + self.rollup + '''_groundtruth_raw;'''
+            +
             (
-            ''',
-            '''.join([''+column.name for column in self.columns_raw])
-            )+
-            (
-            ''',
-            '''+
-            ''',
-            '''.join([key.name for key in self.groups])
-            if len(self.groups)>0 else '') + '''
-            )
-        SELECT *
-        FROM ''' + self.rollup + '''_groundtruth_raw;
-
-        '''+(
-        '''
-        UPDATE pg_rollup SET last_aggregated_id=(select max('''+self.rollup_column+''') from '''+self.table_name+") WHERE rollup_name='"+self.rollup_name+"""';
-        """ if self.rollup_column else '')+'''
+            '''
+            UPDATE pg_rollup SET last_aggregated_id=(select max('''+self.rollup_column+''') from '''+self.table_name+") WHERE rollup_name='"+self.rollup_name+"';"
+            if self.rollup_column else ''
+            )+'''
         END;
         $$;
         ''')
 
 
     def create(self):
-        return ' '.join([
+        return '\n\n'.join([
             self.create_table(),
             self.create_indexes_notnull(),
             self.create_manualrollup(),

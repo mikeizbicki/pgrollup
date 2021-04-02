@@ -477,7 +477,7 @@ RETURNS VOID AS $$
             ])
 
         if dry_run:
-            plpy.notice(str(result[0]['result']))
+            plpy.notice('the given command would execute the following SQL code:\n\n'+str(result[0]['result']))
 $$
 LANGUAGE plpython3u;
 
