@@ -636,6 +636,12 @@ RETURNS TEXT AS $$
         event_id_sequence_name = None
         rollup_column = None
 
+    # verify that there are no subqueries
+    if where_clause and re.search(r'\(\s*select', where_clause, re.IGNORECASE):
+        plpy.error('subqueries not allowed in the WHERE clause')
+    if having_clause and re.search(r'\(\s*select', having_clause, re.IGNORECASE):
+        plpy.error('subqueries not allowed in the HAVING clause')
+
     # constuct the sql statements for generating the rollup, and execute them
     # the error checking above should guarantee that there are no SQL errors below
     sqls = pg_rollup.Rollup(

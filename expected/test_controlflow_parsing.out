@@ -140,6 +140,26 @@ CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup8 AS (
 );
 $$);
 */
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup9 AS (
+    select
+        count(name)
+    from testparsing
+    where
+        num in (1, 2, 3)
+);
+$$);
+ pgrollup 
+----------
+ 
+(1 row)
+
+select * from testparsing_rollup9;
+ count(name) 
+-------------
+           7
+(1 row)
+
 select assert_rollup('testparsing_rollup1');
  assert_rollup 
 ---------------
@@ -177,6 +197,12 @@ select assert_rollup('testparsing_rollup6');
 (1 row)
 
 select assert_rollup('testparsing_rollup7');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup9');
  assert_rollup 
 ---------------
  
@@ -246,6 +272,12 @@ select assert_rollup('testparsing_rollup6');
 (1 row)
 
 select assert_rollup('testparsing_rollup7');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup9');
  assert_rollup 
 ---------------
  

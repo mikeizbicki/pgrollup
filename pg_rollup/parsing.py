@@ -1,5 +1,6 @@
 from lark import Lark
 
+
 def parse_create(text):
     '''
     This is the main function that will get called from postgresql.
