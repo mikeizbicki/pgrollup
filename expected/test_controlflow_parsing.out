@@ -73,6 +73,61 @@ $$);
  
 (1 row)
 
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup5 AS (
+    select
+        max(num),
+        count(*) - sum(num) AS foo 
+    from testparsing
+);
+$$);
+ pgrollup 
+----------
+ 
+(1 row)
+
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup6 AS (
+    select
+        max(num),
+        sum(num)/count(num) as avg,
+        max(num) - min(num) as range,
+        max(num)-max(num)+max(num)-max(num)+55
+    from testparsing
+);
+$$);
+ pgrollup 
+----------
+ 
+(1 row)
+
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    select
+        sum(num*num + 2),
+        max(1),
+        (max((1 + (((num))))*2) + count(num))/count(*)
+        + (max((1 + (((num))))*2) + count(num))/count(*)
+    from testparsing
+);
+$$);
+ pgrollup 
+----------
+ 
+(1 row)
+
+select * from testparsing_rollup5;
+ max(num) | foo 
+----------+-----
+        9 | -41
+(1 row)
+
+select * from testparsing_rollup5_raw;
+ count(*) | max(num) | sum(num) | raw_true 
+----------+----------+----------+----------
+       26 |        9 |       67 | t
+(1 row)
+
 select assert_rollup('testparsing_rollup1');
  assert_rollup 
 ---------------
@@ -92,6 +147,24 @@ select assert_rollup('testparsing_rollup3');
 (1 row)
 
 select assert_rollup('testparsing_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup5');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup6');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup7');
  assert_rollup 
 ---------------
  
@@ -143,6 +216,24 @@ select assert_rollup('testparsing_rollup3');
 (1 row)
 
 select assert_rollup('testparsing_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup5');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup6');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('testparsing_rollup7');
  assert_rollup 
 ---------------
  

@@ -3,6 +3,8 @@ import re
 
 Key = collections.namedtuple('Key', ['value','type','name','algebra'])
 
+ViewKey = collections.namedtuple('ViewKey', ['value','name'])
+
 
 Algebra = collections.namedtuple('Algebra', ['view','agg','hom','type','zero','plus','negate'])
 
@@ -97,33 +99,6 @@ def _add_namespace(s, namespace):
             chunks_namespaced.append(re.sub(r'([^:]|^)\s*\b([\w_]+)\b([^.(]|$)', r'\g<1>'+namespace+r'.\g<2>\g<3>', chunk))
     return "'".join(chunks_namespaced)
 
-
-def parse_algebra(text):
-    '''
-    >>> parse_algebra('count(*) AS sum')
-    {'algebra': 'count', 'expr': '*', 'name': 'sum'}
-    >>> parse_algebra('count(*) as sum')
-    {'algebra': 'count', 'expr': '*', 'name': 'sum'}
-    >>> parse_algebra('count(*)')
-    {'algebra': 'count', 'expr': '*', 'name': '"count(*)"'}
-    >>> parse_algebra('sum(1+max(left,right))')
-    {'algebra': 'sum', 'expr': '1+max(left,right)', 'name': 'sum'}
-    '''
-    # FIXME: this will break columns in "" with capitalization
-    text = text.lower()
-
-    parts = text.split('as')
-    
-    agg = parts[0].strip()
-    ret = {
-        'algebra': agg[:agg.find("(")],
-        'expr': agg[agg.find("(")+1:agg.rfind(")")]
-        }
-    if len(parts) == 1:
-        ret['name'] = '"'+agg+'"' #ret['algebra']
-    else:
-        ret['name'] = parts[1].strip()
-    return ret
 
 class Rollup:
 
@@ -441,10 +416,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
             '''+
             ''',
             '''.join([
-
+                (column.value
+                    if True
+                    else
                 (_algsub(column.algebra['view'],f''' "{column.algebra['name']}({column.value})" ''' + '/*'+column.value+'*/')
                 if column.algebra['plus'].lower().strip() != 'null'
-                else self._joinsub(
+                else 
+                 #_algsub(column.algebra['view'],f''' "{column.algebra['name']}({column.value})" ''' + '/*'+column.value+'*/')
+                 #+ '/*' +
+                self._joinsub(
                         column.algebra['view'],
                         source,
                         ''+column.value,
@@ -454,7 +434,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' ('''+
                         column.algebra['zero'],
                         self.columns_view
                         )
-                )
+                #+ '*/'
+                ))
                 +' AS '+''+column.name for column in self.columns_view
                 ])
             )+

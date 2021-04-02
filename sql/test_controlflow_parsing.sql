@@ -72,10 +72,47 @@ CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup4 AS (
 );
 $$);
 
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup5 AS (
+    select
+        max(num),
+        count(*) - sum(num) AS foo 
+    from testparsing
+);
+$$);
+
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup6 AS (
+    select
+        max(num),
+        sum(num)/count(num) as avg,
+        max(num) - min(num) as range,
+        max(num)-max(num)+max(num)-max(num)+55
+    from testparsing
+);
+$$);
+
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    select
+        sum(num*num + 2),
+        max(1),
+        (max((1 + (((num))))*2) + count(num))/count(*)
+        + (max((1 + (((num))))*2) + count(num))/count(*)
+    from testparsing
+);
+$$);
+
+select * from testparsing_rollup5;
+select * from testparsing_rollup5_raw;
+
 select assert_rollup('testparsing_rollup1');
 select assert_rollup('testparsing_rollup2');
 select assert_rollup('testparsing_rollup3');
 select assert_rollup('testparsing_rollup4');
+select assert_rollup('testparsing_rollup5');
+select assert_rollup('testparsing_rollup6');
+select assert_rollup('testparsing_rollup7');
 
 insert into testparsing (name,num) values
     ('alice', 1),
@@ -109,3 +146,6 @@ select assert_rollup('testparsing_rollup1');
 select assert_rollup('testparsing_rollup2');
 select assert_rollup('testparsing_rollup3');
 select assert_rollup('testparsing_rollup4');
+select assert_rollup('testparsing_rollup5');
+select assert_rollup('testparsing_rollup6');
+select assert_rollup('testparsing_rollup7');

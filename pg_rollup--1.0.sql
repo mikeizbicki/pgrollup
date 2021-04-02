@@ -2,7 +2,7 @@
 
 --------------------------------------------------------------------------------
 
-CREATE TABLE algebras (
+CREATE TABLE algebra (
     id                      SERIAL PRIMARY KEY,
     name                    TEXT NOT NULL,
     agg                     TEXT NOT NULL,
@@ -13,15 +13,22 @@ CREATE TABLE algebras (
     view                    TEXT
 );
 
+CREATE TABLE viewop (
+    id                      SERIAL PRIMARY KEY,
+    id_algebra              INTEGER REFERENCES algebra(id),
+    op                      TEXT NOT NULL,
+    value                   TEXT NOT NULL
+);
+
 /*
- * postgres-native algebras
+ * postgres-native algebra
  *
  * FIXME: the following aggregate functions could be implemented, but are not
  * bit_and
  * bit_or
  */
 
-INSERT INTO algebras
+INSERT INTO algebra
     (name           ,agg                            ,type       ,zero                       ,plus                           ,negate ,view)
     VALUES
     ('count'        ,'count(x)'                     ,'INTEGER'  ,'0'                        ,'count(x)+count(y)'            ,'-x'   ,'x'),
@@ -31,7 +38,7 @@ INSERT INTO algebras
     ('bool_and'     ,'bool_and(x)'                  ,'BOOL'     ,'TRUE'                     ,'bool_and(x) and bool_and(y)'  ,NULL   ,'x'),
     ('bool_or'      ,'bool_or(x)'                   ,'BOOL'     ,'FALSE'                    ,'bool_or(x) or bool_or(y)'     ,NULL   ,'x');
 
-INSERT INTO algebras
+INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
     ( 'avg'
@@ -59,7 +66,7 @@ INSERT INTO algebras
     , 'CASE WHEN count(x) > 1 THEN var_pop(x)*count(x)/(count(x)-1) ELSE var_pop(x) END'
     ),
     ( 'variance'
-    , 'coalesce(variance(x),0)'
+    , 'variance(x)'
     , 'FLOAT'
     , 'null'
     , 'null'
@@ -120,7 +127,7 @@ BEGIN
 SELECT true FROM pg_extension INTO has_extension WHERE extname='topn';
 IF has_extension THEN
 
-INSERT INTO algebras
+INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
     ('topn'
@@ -129,7 +136,8 @@ INSERT INTO algebras
     ,$$'{}'$$
     ,'topn_union(topn(x),topn(y))'
     ,NULL
-    ,'topn(x,1)'
+    --,'topn(topn(x),1)'
+    ,'topn(x)'
     );
 
 END IF;
@@ -146,7 +154,7 @@ BEGIN
 SELECT true FROM pg_extension INTO has_extension WHERE extname='hll';
 IF has_extension THEN
 
-INSERT INTO algebras
+INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
     ('hll'
@@ -155,7 +163,7 @@ INSERT INTO algebras
     ,'hll_empty()'
     ,'hll(x)||hll(y)'
     ,NULL
-    ,'round(hll_cardinality(x))'
+    ,'round(hll_cardinality(hll(x)))'
     );
 
 END IF;
@@ -181,7 +189,7 @@ CREATE OR REPLACE FUNCTION frequent_strings_sketch_union(a frequent_strings_sket
     select frequent_strings_sketch_merge(9,sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 
-INSERT INTO algebras
+INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
     ('kll_float_sketch'
@@ -190,7 +198,7 @@ INSERT INTO algebras
     ,'null'
     ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'
     ,NULL
-    ,'kll_float_sketch_get_quantile(x,0.5)'
+    ,'kll_float_sketch_get_quantile(kll_float_sketch(x),0.5)'
     ),
     ('frequent_strings_sketch'
     ,'frequent_strings_sketch_build(9,x)'
@@ -198,7 +206,8 @@ INSERT INTO algebras
     ,'null'
     ,'frequent_strings_sketch_union(frequent_strings_sketch(x),frequent_strings_sketch(y))'
     ,NULL
-    ,$$'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'$$
+    ,'frequent_strings_sketch_result_no_false_negatives(frequent_strings_sketch(x))'
+    --,$$'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'$$
     );
 
     /*
@@ -250,7 +259,7 @@ CREATE OR REPLACE FUNCTION tdigest_union(a tdigest, b tdigest) RETURNS tdigest A
     select tdigest(sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 
-INSERT INTO algebras
+INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
     ('tdigest'
@@ -259,7 +268,7 @@ INSERT INTO algebras
     ,'null' --,'tdigest(null,100)'
     ,'tdigest_union(tdigest(x),tdigest(y))'
     ,NULL
-    ,'tdigest_percentile(x,0.5)'
+    ,'tdigest_percentile(tdigest(x),0.5)'
     );
 
 END IF;
@@ -472,12 +481,14 @@ CREATE OR REPLACE FUNCTION create_rollup_internal(
     where_clause TEXT DEFAULT NULL,
     having_clause TEXT DEFAULT NULL,
     tablespace TEXT DEFAULT NULL,
-    key TEXT DEFAULT NULL,
+    rollup_column TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL,
     dry_run BOOLEAN DEFAULT FALSE
     )
 RETURNS TEXT AS $$
     import pg_rollup
+    import pg_rollup.deleteme
+    import pg_rollup.parsing_functions
     import re
     import collections
 
@@ -491,6 +502,30 @@ RETURNS TEXT AS $$
         sql = f'select typname from pg_type where oid={t_oid} limit 1;'
         type = plpy.execute(sql)[0]['typname']
         return type
+
+    def column_to_key(column):
+
+        # extract key info
+        value, name = column
+        algebra = value[:value.find("(")]
+        expr = value[value.find("(")+1:value.rfind(")")]
+        type = get_type(expr)
+
+        # get the algebra dictionary
+        sql = f"select * from algebra where name='{algebra}';"
+        res = list(plpy.execute(sql))
+
+        # generate the Key
+        if len(res)==1:
+            algebra_dictionary = res[0]
+            return pg_rollup.Key(expr,type,name,algebra_dictionary)
+        else:
+            plpy.error(f'algbera {algebra} not found in the algebra table')
+
+    # get a list of all algebras
+    sql = f'select * from algebra;'
+    rows = plpy.execute(sql)
+    all_algebras = list(rows)
 
     # if no mode provided, calculate the default mode
     global mode
@@ -516,86 +551,61 @@ RETURNS TEXT AS $$
     for value,name in groups:
         groups_list.append(pg_rollup.Key(value,get_type(value),name,None))
 
-    # generate the columns_list
-
+    # columns_view_list contains the columns that will be included in the created view
     columns_view_list = []
+    raw_columns = []
     for value,name in columns:
-        d = pg_rollup.parse_algebra(value + ' AS ' + name)
-        value = d['expr']
-        name = d['name']
-        algebra = d['algebra'].strip()
-        type = get_type(value)
+        value_substitute_views = pg_rollup.parsing_functions.substitute_views(value, all_algebras)
+        deps, value_view = pg_rollup.parsing_functions.extract_algebras(value_substitute_views, all_algebras)
+        columns_view_list.append(pg_rollup.ViewKey(value_view,name))
+        for dep in deps:
+            raw_columns.append(dep)
 
-        # the value/type/name have been successfully extracted,
-        # and so we add them to the ret variable
-        sql = f"select * from algebras where name='{algebra}';"
-        res = list(plpy.execute(sql))
-        if len(res)==1:
-            algebra_dictionary = res[0]
-            columns_view_list.append(pg_rollup.Key(value,type,name,algebra_dictionary))
-        else:
-            plpy.error(f'algbera {algebra} not found in the algebras table')
+    # columns_raw_list contains the columns that will be included in the raw table
+    columns_raw_list = []
+    raw_columns = sorted(list(set(raw_columns)))
+    for value in raw_columns:
+        key = column_to_key((value,'"'+value+'"'))
+        algebra_dictionary = key[3]
+        expr = key[0]
 
-    error_str = 'columns'
-    columns_list = []
-    if True:
-        column_values = [ value for value,name in columns ]
-        for k in column_values:
-            d = pg_rollup.parse_algebra(k)
-            value = d['expr']
-            name = '"'+k+'"' #d['name']
-            algebra = d['algebra'].strip()
-            type = get_type(value)
+        # add column info
+        columns_raw_list.append(key)
 
-            # the value/type/name have been successfully extracted,
-            # and so we add them to the ret variable
-            sql = f"select * from algebras where name='{algebra}';"
-            res = list(plpy.execute(sql))
-            if len(res)==1:
-                algebra_dictionary = res[0]
-                columns_list.append(pg_rollup.Key(value,type,name,algebra_dictionary))
-            else:
-                plpy.error(f'algbera {algebra} not found in the algebras table')
+        # add dependencies to raw_columns if they are not present
+        def extract_functions(text):
+            functions = []
+            for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)', text):
+                functions.append(match.group(1))
+            return functions
 
-            # add dependencies to ks if they are not present
-            deps = []
-            for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['plus']):
-                deps.append(match.group(1))
-            if algebra_dictionary['plus'].strip().lower() == 'null':
-                for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['view']):
-                    deps.append(match.group(1))
-            deps = set(deps)
-            if algebra in deps:
-                deps.remove(algebra)
-            for dep in deps:
-                matched = False
-                for k2 in column_values:
-                    if f'{dep}({value})' in k2:
-                        matched = True
-                        break
-                if not matched:
-                    column_values.append(f'{dep}({value})')
+        deps = extract_functions(algebra_dictionary['plus'])
+        if algebra_dictionary['plus'].strip().lower() == 'null':
+            deps += extract_functions(algebra_dictionary['view'])
 
-        # if there are any duplicate names, throw an error
-        names = [k.name for k in columns_list]
-        duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
-        if len(duplicate_names) > 0:
-            plpy.warning('names='+str(names))
-            plpy.error(f'duplicate names in {error_str}: '+str(duplicate_names))
+        for dep in deps:
+            matched = False
+            if f'{dep}({expr})' not in raw_columns:
+                raw_columns.append(f'{dep}({expr})')
 
-    columns_raw_list = columns_list
-
+    # if there are any duplicate names in columns_raw_list, throw an error;
+    # this should never happen, and is simply a consistency check
+    names = [k.name for k in columns_raw_list]
+    duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
+    if len(duplicate_names) > 0:
+        plpy.warning('names='+str(names))
+        plpy.error(f'duplicate names in columns: '+str(duplicate_names))
 
     # check if the table is temporary
     sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
     is_temp = plpy.execute(sql)[0]['is_temp']
 
     # compute the information needed for manual/cron rollups
-    if key:
-        event_id_sequence_name = f"{table_name}_{key}_seq"
-        rollup_column = key
+    global rollup_column
+    if rollup_column:
+        event_id_sequence_name = f"{table_name}_{rollup_column}_seq"
     else:
-        # no key was given, so we try to use the primary key
+        # no rollup_column was given, so we try to use the primary key
         sql=f'''
         SELECT ind_column.attname AS pk
         FROM pg_class tbl
@@ -696,6 +706,7 @@ CREATE OR REPLACE FUNCTION create_rollup(
     )
 RETURNS VOID AS $$
     import pg_rollup
+    import pg_rollup.deleteme
 
     wheres_list = pg_rollup._extract_arguments(wheres)
     if len(wheres_list)==1 and wheres_list[0].strip()=='':
@@ -744,206 +755,13 @@ RETURNS VOID AS $$
         columns => $3,
         groups => $4,
         tablespace => $5,
-        key => $6,
+        rollup_column => $6,
         mode => $7
     );'''
     plan = plpy.prepare(sql,['regclass','text','text[]','text[]','text','text','text'])
     plpy.execute(plan, [table_name,rollup_name,columns_list,groups_list,tablespace,key,mode])
 $$ language plpython3u;
-/*
-RETURNS VOID AS $$
-    import pg_rollup
-    import re
-    import collections
 
-    def process_list(ks, error_str, parse_algebra=False):
-        '''
-        converts postgresql strings of either of the following forms
-            value
-            value AS name
-        into python pg_rollup.Key values with a value, type, and name;
-        this function is responsible for the vast majority of error handling,
-        and the error messages could still probably be improved considerably
-        '''
-        ret = []
-        for k in ks:
-            if not parse_algebra:
-                # extract the value from the input,
-                # and if the 'AS' syntax is used, also extract the name
-                l,_,r = k.rpartition('AS ')
-     
-                # case when AS does not apper in the input string
-                if l=='': 
-                    value = k.strip()
-                    name = None
-
-                # when AS appears in the input string,
-                # but the contents to the right of AS are not a valid column name;
-                # we treat the input as not using the AS syntax
-                elif not re.match(r'^\w+$', r.strip()): 
-                    value = k.strip()
-                    name = None
-
-                # the AS syntax was used correctly
-                else:
-                    value = l.strip()
-                    name = r.strip()
-                algebra = 'count' # FIXME: should be None?
-            else:
-                # FIXME: move the logic above into the parse_algebra function
-                d = pg_rollup.parse_algebra(k)
-                value = d['expr']
-                name = d['name']
-                algebra = d['algebra'].strip()
-
-            # extract the type and a default name from the value
-            sql = f'select {value} from {table_name} limit 1;'
-            res = plpy.execute(sql)
-            t_oid = res.coltypes()[0]
-            name = name or res.colnames()[0]
-
-            sql = f'select typname from pg_type where oid={t_oid} limit 1;'
-            type = plpy.execute(sql)[0]['typname']
-
-            # if the name has a ? inside of it, it will not be a valid name, so we through an error;
-            # this occurs when no name is specified, and postgresql cannot infer a good name for the column
-            if '?' in name:
-                plpy.error(f'invalid name for {error_str}: {k}, consider using the syntax: {k} AS column_name')
-
-            # the value/type/name have been successfully extracted,
-            # and so we add them to the ret variable
-            sql = f"select * from algebras where name='{algebra}';"
-            res = list(plpy.execute(sql))
-            if len(res)==1:
-                algebra_dictionary = res[0]
-                ret.append(pg_rollup.Key(value,type,name,algebra_dictionary))
-            else:
-                plpy.error(f'algbera {algebra} not found in the algebras table')
-
-            # add dependencies to ks if they are not present
-            deps = []
-            for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['plus']):
-                deps.append(match.group(1))
-            if algebra_dictionary['plus'].strip().lower() == 'null':
-                for match in re.finditer(r'\b([a-zA-Z0-9_]+)\([xy]\)',algebra_dictionary['view']):
-                    deps.append(match.group(1))
-            deps = set(deps)
-            if algebra in deps:
-                deps.remove(algebra)
-            for dep in deps:
-                matched = False
-                for k2 in ks:
-                    if f'{dep}({value})' in k2:
-                        matched = True
-                        break
-                if not matched:
-                    ks.append(f'{dep}({value})')
-
-        # if there are any duplicate names, throw an error
-        names = [k.name for k in ret]
-        duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
-        if len(duplicate_names) > 0:
-            plpy.error(f'duplicate names in {error_str}: '+str(duplicate_names))
-
-        # everything worked without error, so return
-        return ret
-
-    # if no mode provided, calculate the default mode
-    global mode
-    if mode is None:
-        mode = plpy.execute("select value from pg_rollup_settings where name='default_mode';")[0]['value'];
-        if mode is None:
-            mode = 'trigger'
-
-    # if no tablespace provided, calculate the default tablespace
-    global tablespace
-    if tablespace is None:
-        # FIXME: the default tablespace is not guaranteed to be "pg_default"
-        tablespace_name = 'pg_default'
-    else:
-        tablespace_name = tablespace
-
-    # extract a list of wheres and rollups from the input parameters
-    wheres_list = pg_rollup._extract_arguments(wheres)
-    if len(wheres_list)==1 and wheres_list[0].strip()=='':
-        wheres_list=[]
-
-    rollups_list = pg_rollup._extract_arguments(rollups)
-    if len(rollups_list)==1 and rollups_list[0].strip()=='':
-        rollups_list=[]
-
-    # check if the table is temporary
-    sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
-    is_temp = plpy.execute(sql)[0]['is_temp']
-
-    # compute the information needed for manual/cron rollups
-    if key:
-        event_id_sequence_name = f"{table_name}_{key}_seq"
-        rollup_column = key
-    else:
-        # no key was given, so we try to use the primary key
-        sql=f'''
-        SELECT ind_column.attname AS pk
-        FROM pg_class tbl
-          INNER JOIN pg_index ind ON ind.indrelid = tbl.oid
-          INNER JOIN pg_class ind_table ON ind_table.oid = ind.indexrelid
-          INNER JOIN pg_attribute ind_column ON ind_column.attrelid = ind_table.oid
-        WHERE tbl.relname = '{table_name}'
-          AND ind.indisprimary;
-        '''
-        pks = list(plpy.execute(sql))
-
-        event_id_sequence_name = None
-        rollup_column = None
-        if len(pks) == 0:
-            plpy.warning(f'no primary key in table {table_name}')
-        elif len(pks) > 1:
-            plpy.warning(f'multi-column primary key in table {table_name}')
-        else:
-            event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
-            rollup_column = pks[0]['pk']
-
-    # verify that the computed sequence exists in the db
-    sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
-    matches = list(plpy.execute(sql))
-    if len(matches) == 0:
-        plpy.warning(f'sequence "{event_id_sequence_name}" not found in table')
-        event_id_sequence_name = None
-        rollup_column = None
-
-    # constuct the sql statements for generating the rollup, and execute them
-    # the error checking above should guarantee that there are no SQL errors below
-    sqls = pg_rollup.Rollup(
-        table_name,
-        is_temp,
-        tablespace_name,
-        rollup_name,
-        process_list(wheres_list, 'key'),
-        process_list(rollups_list, 'algebra', parse_algebra=True),
-        rollup_column
-    ).create()
-    for s in sqls:
-        plpy.execute(s)
-
-    # register the rollup in the pg_rollup table
-    if rollup_column is None:
-        plpy.warning(f'event_id_sequence_name={event_id_sequence_name}')
-        plpy.warning('no valid sequence found for manual/cron rollups; the only available rollup type is trigger')
-        rollup_column_str = 'NULL'
-        event_id_sequence_name_str = 'NULL'
-    else:
-        rollup_column_str = "'"+rollup_column+"'"
-        event_id_sequence_name_str = "'"+event_id_sequence_name+"'"
-    plpy.execute(f"insert into pg_rollup (rollup_name, table_name, rollup_column, event_id_sequence_name, sql, mode) values ('{rollup_name}','{table_name}',{rollup_column_str},{event_id_sequence_name_str},'{rollup_name}_raw_manualrollup','init')")
-
-    # set the rollup mode
-    plpy.execute("select rollup_mode('"+rollup_name+"','"+mode+"')")
-
-    # insert values into the rollup
-    plpy.execute(f"select {rollup_name}_raw_reset();")
-$$
-LANGUAGE plpython3u;
-*/
 
 CREATE OR REPLACE FUNCTION rollup_mode(rollup_name REGCLASS, mode TEXT)
 RETURNS VOID AS $func$
@@ -1055,7 +873,7 @@ RETURNS NULL ON NULL INPUT;
 --
 -- the function assert_rollup_relative_error checks for approximate equality between the rollup and the groundtruth;
 -- it should be used on rollups that either use floating point calculations or have internal randomness;
--- the relative_error parameter must be tuned to the accuracy guarantee provided by the rollup algebras
+-- the relative_error parameter must be tuned to the accuracy guarantee provided by the rollup algebra
 
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
