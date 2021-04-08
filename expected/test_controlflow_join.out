@@ -284,39 +284,9 @@ insert into testjoin1 (id,name,num) values
     (223,NULL, NULL),
     (124,NULL, NULL),
     (225,NULL, NULL);
-select * from testjoin_rollup2_groundtruth order by name;
- sum(num) | sum(foo) |  name   
-----------+----------+---------
-       42 |       46 | alice
-       45 |       32 | bill
-       17 |       19 | charlie
-       12 |       12 | dave
-       15 |       15 | elliot
-       49 |       61 | 
-(6 rows)
-
-select * from testjoin_rollup2 order by name;
- sum(num) | sum(foo) |  name   
-----------+----------+---------
-       42 |       46 | alice
-       45 |       32 | bill
-       17 |       19 | charlie
-       12 |       12 | dave
-       15 |       15 | elliot
-       49 |       61 | 
-(6 rows)
-
-select * from testjoin_rollup1_groundtruth order by name;
- sum(num) | sum(foo) |  name   
-----------+----------+---------
-       42 |       46 | alice
-       45 |       32 | bill
-       17 |       19 | charlie
-       12 |       12 | dave
-       15 |       15 | elliot
-       49 |       61 | 
-(6 rows)
-
+--select * from testjoin_rollup2_groundtruth order by name;
+--select * from testjoin_rollup2 order by name;
+--select * from testjoin_rollup1_groundtruth order by name;
 select assert_rollup('testjoin_rollup1');
  assert_rollup 
 ---------------
@@ -443,14 +413,4 @@ select assert_rollup('testjoin_rollup4');
  
 (1 row)
 
-select * from testjoin_rollup1;
- sum(num) | sum(foo) |  name   
-----------+----------+---------
-      110 |      134 | 
-       40 |       44 | charlie
-       28 |       28 | dave
-      110 |       76 | bill
-       30 |       30 | elliot
-      108 |      110 | alice
-(6 rows)
-
+--select * from testjoin_rollup1 order by name;

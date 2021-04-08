@@ -229,9 +229,9 @@ insert into testjoin1 (id,name,num) values
     (124,NULL, NULL),
     (225,NULL, NULL);
 
-select * from testjoin_rollup2_groundtruth order by name;
-select * from testjoin_rollup2 order by name;
-select * from testjoin_rollup1_groundtruth order by name;
+--select * from testjoin_rollup2_groundtruth order by name;
+--select * from testjoin_rollup2 order by name;
+--select * from testjoin_rollup1_groundtruth order by name;
 
 select assert_rollup('testjoin_rollup1');
 select assert_rollup('testjoin_rollup2');
@@ -304,4 +304,4 @@ select assert_rollup('testjoin_rollup2');
 select assert_rollup('testjoin_rollup3');
 select assert_rollup('testjoin_rollup4');
 
-select * from testjoin_rollup1;
+--select * from testjoin_rollup1 order by name;
