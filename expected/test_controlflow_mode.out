@@ -374,44 +374,52 @@ select assert_rollup('test_rollup4b');
 (1 row)
 
 select do_rollup('test_rollup1');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup1,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup1b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup1b,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup2');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup2,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup2b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup2b,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup3');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup3,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup3b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup3b,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup4');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup4,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup4b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup4b,test,79,78)
+(1 row)
 
 select assert_rollup('test_rollup1');
  assert_rollup 
@@ -462,44 +470,52 @@ select assert_rollup('test_rollup4b');
 (1 row)
 
 select do_rollup('test_rollup1');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup1,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup1b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup1b,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup2');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup2,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup2b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup2b,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup3');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup3,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup3b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup3b,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup4');
- do_rollup 
------------
-(0 rows)
+         do_rollup         
+---------------------------
+ (test_rollup4,test,79,78)
+(1 row)
 
 select do_rollup('test_rollup4b');
- do_rollup 
------------
-(0 rows)
+         do_rollup          
+----------------------------
+ (test_rollup4b,test,79,78)
+(1 row)
 
 select assert_rollup('test_rollup1');
  assert_rollup 
@@ -1216,27 +1232,27 @@ select do_rollup('test_rollup2b');
 (1 row)
 
 select do_rollup('test_rollup3');
-       do_rollup       
------------------------
- (test_rollup3,test,,)
+          do_rollup          
+-----------------------------
+ (test_rollup3,test,235,234)
 (1 row)
 
 select do_rollup('test_rollup3b');
-       do_rollup        
-------------------------
- (test_rollup3b,test,,)
+          do_rollup           
+------------------------------
+ (test_rollup3b,test,235,234)
 (1 row)
 
 select do_rollup('test_rollup4');
-       do_rollup       
------------------------
- (test_rollup4,test,,)
+          do_rollup          
+-----------------------------
+ (test_rollup4,test,235,234)
 (1 row)
 
 select do_rollup('test_rollup4b');
-       do_rollup        
-------------------------
- (test_rollup4b,test,,)
+          do_rollup           
+------------------------------
+ (test_rollup4b,test,235,234)
 (1 row)
 
 select assert_rollup('test_rollup1');
@@ -1603,124 +1619,148 @@ select do_rollup('test_rollup4b',NULL,5);
 (1 row)
 
 select do_rollup('test_rollup1',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup1,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup1b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup1b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup2',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup2,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup2b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup2b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup3',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup3,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup3b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup3b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup4',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup4,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup4b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup4b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup1',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup1,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup1b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup1b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup2',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup2,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup2b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup2b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup3',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup3,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup3b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup3b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup4',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup4,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup4b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup4b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup1',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup1,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup1b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup1b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup2',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup2,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup2b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup2b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup3',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup3,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup3b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup3b,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup4',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup          
+-----------------------------
+ (test_rollup4,test,261,260)
+(1 row)
 
 select do_rollup('test_rollup4b',NULL,5);
- do_rollup 
------------
-(0 rows)
+          do_rollup           
+------------------------------
+ (test_rollup4b,test,261,260)
+(1 row)
 
 select assert_rollup('test_rollup1');
  assert_rollup 

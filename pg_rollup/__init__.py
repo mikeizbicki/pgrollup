@@ -345,7 +345,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 END;
                 $$;
                 '''+
-                f'''INSERT INTO pg_rollup 
+                f'''INSERT INTO pgrollup_rollups 
                     ( rollup_name
                     , table_alias
                     , table_name
@@ -374,6 +374,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
             BEGIN
                 IF TG_OP='UPDATE' OR TG_OP='INSERT' THEN'''+self._insert_statement(False, 'new_table',[joininfo['table_alias']])+'''
+                    UPDATE pgrollup_rollups
+                    SET last_aggregated_id=(
+                        SELECT pg_sequence_last_value(event_id_sequence_name) AS lastval
+                        FROM pgrollup_rollups
+                        WHERE rollup_name=\''''+self.rollup_name+'''\'
+                          AND table_alias=\''''+joininfo['table_alias']+'''\'
+                        )
+                    WHERE rollup_name=\''''+self.rollup_name+'''\'
+                      AND table_alias=\''''+joininfo['table_alias']+'''\';
                 END IF;
                 IF TG_OP='UPDATE' OR TG_OP='DELETE' THEN'''+self._insert_statement(True, 'old_table',[joininfo['table_alias']])+'''
                 END IF;
@@ -531,7 +540,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             +
             (
             '''
-            UPDATE pg_rollup SET last_aggregated_id=(select max('''+self.rollup_column+''') from '''+self.table_name+") WHERE rollup_name='"+self.rollup_name+"';"
+            UPDATE pgrollup_rollups SET last_aggregated_id=(select max('''+self.rollup_column+''') from '''+self.table_name+") WHERE rollup_name='"+self.rollup_name+"';"
             if self.rollup_column else ''
             )+'''
         END;
@@ -555,7 +564,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 for joininfo in self.joininfos])
             +
             f'''
-            DELETE FROM pg_rollup WHERE rollup_name='{self.rollup}';
+            DELETE FROM pgrollup_rollups WHERE rollup_name='{self.rollup}';
         END;
         $$;
         ''')

@@ -277,7 +277,7 @@ $do$ language 'plpgsql';
 
 --------------------------------------------------------------------------------
 
-CREATE TABLE pg_rollup (
+CREATE TABLE pgrollup_rollups (
     rollup_name TEXT NOT NULL,
     table_alias TEXT NOT NULL,
     table_name TEXT NOT NULL,
@@ -314,7 +314,7 @@ BEGIN
     THEN
         FOR obj IN SELECT * FROM pg_event_trigger_dropped_objects()
         LOOP
-            FOR rollup IN SELECT * FROM pg_rollup WHERE table_name=obj.object_name
+            FOR rollup IN SELECT * FROM pgrollup_rollups WHERE table_name=obj.object_name
             LOOP
                 PERFORM drop_rollup(rollup.rollup_name);
             END LOOP;
@@ -359,13 +359,13 @@ BEGIN
     --SELECT table_name, COALESCE(last_aggregated_id+1,0), LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,COALESCE(pg_sequence_last_value(event_id_sequence_name),0))
     SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
-    FROM pg_rollup
-    WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name 
-      AND pg_rollup.table_alias = incremental_rollup_window.table_alias 
+    FROM pgrollup_rollups
+    WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
+      AND pgrollup_rollups.table_alias = incremental_rollup_window.table_alias 
     FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE 'rollup ''%'' is not in the pg_rollup table', rollup_name;
+        RAISE 'rollup ''%'' is not in pgrollup_rollups', rollup_name;
     END IF;
 
     IF window_end IS NULL THEN
@@ -399,15 +399,15 @@ BEGIN
     /*
      * Remember the end of the window to continue from there next time.
      */
-    UPDATE pg_rollup SET last_aggregated_id = window_end
-    WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name
-      AND pg_rollup.table_alias = incremental_rollup_window.table_alias;
+    UPDATE pgrollup_rollups SET last_aggregated_id = window_end
+    WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name
+      AND pgrollup_rollups.table_alias = incremental_rollup_window.table_alias;
 END;
 $function$;
 
 
 CREATE FUNCTION do_rollup(
-    rollup_name text,
+    rollup_name text default null,
     table_alias text default null,
     max_rollup_size bigint default 4611686018427387904, -- 2**62
     force_safe boolean default true,
@@ -429,11 +429,26 @@ DECLARE
     start_id bigint;
     end_id bigint;
 BEGIN
+    -- if no rollup_name is provided,
+    -- then we'll do a rollup on all of the tables
+    IF rollup_name IS NULL THEN
+        FOR obj IN SELECT * FROM pgrollup_rollups WHERE event_id_sequence_name IS NOT NULL
+        LOOP
+            RETURN QUERY SELECT * FROM do_rollup(
+                obj.rollup_name,
+                obj.table_alias,
+                do_rollup.max_rollup_size,
+                do_rollup.force_safe,
+                do_rollup.delay_seconds
+                );
+        END LOOP;
+        RETURN;
+    END IF;
+
     -- if no table_alias is provided,
     -- then we'll do a rollup on all of the table_aliases
-    -- by recursively calling do_rollup within a loop
     IF table_alias IS NULL THEN
-        FOR obj IN SELECT * FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name
+        FOR obj IN SELECT * FROM pgrollup_rollups WHERE pgrollup_rollups.rollup_name=do_rollup.rollup_name
         LOOP
             RETURN QUERY SELECT * FROM do_rollup(
                 do_rollup.rollup_name,
@@ -446,32 +461,27 @@ BEGIN
         RETURN;
     END IF;
 
-    /* if the rollup is in trigger mode, then there is nothing to update, so we do nothing */
-    SELECT pg_rollup.mode INTO mode
-    FROM pg_rollup
-    WHERE pg_rollup.rollup_name=do_rollup.rollup_name
-      AND pg_rollup.table_alias=do_rollup.table_alias;
-    IF mode != 'trigger' THEN
+    /* sleeping is how cron ensures that the jobs are staggered in time */
+    PERFORM pg_sleep(delay_seconds);
 
-        PERFORM pg_sleep(delay_seconds);
+    /* determine which page views we can safely aggregate */
+    SELECT window_start, window_end INTO start_id, end_id
+    FROM incremental_rollup_window(rollup_name,table_alias,max_rollup_size,force_safe);
 
-        /* determine which page views we can safely aggregate */
-        SELECT window_start, window_end INTO start_id, end_id
-        FROM incremental_rollup_window(rollup_name,table_alias,max_rollup_size,force_safe);
-
-        /* exit early if there are no new page views to aggregate */
-        IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN RETURN; END IF;
-        --IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id; END IF;
-
-        /* this is the new code that gets the rollup command from the table
-         * and executes it */
-        SELECT pg_rollup.sql 
-        INTO sql_command
-        FROM pg_rollup 
-        WHERE pg_rollup.rollup_name = do_rollup.rollup_name;
-
-        EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
+    /* exit early if there are no new page views to aggregate */
+    IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN 
+        RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id;
+        RETURN;
     END IF;
+
+    /* this is the new code that gets the rollup command from the table
+     * and executes it */
+    SELECT pgrollup_rollups.sql 
+    INTO sql_command
+    FROM pgrollup_rollups 
+    WHERE pgrollup_rollups.rollup_name = do_rollup.rollup_name;
+
+    EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
 
     -- return
     RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id;
@@ -835,7 +845,7 @@ CREATE OR REPLACE FUNCTION rollup_mode(
 )
 RETURNS VOID AS $func$
     
-    sql = (f"select * from pg_rollup where rollup_name='{rollup_name}'")
+    sql = (f"select * from pgrollup_rollups where rollup_name='{rollup_name}'")
     rows = list(plpy.execute(sql))
 
     for pg_rollup in rows:
@@ -854,12 +864,6 @@ RETURNS VOID AS $func$
             plpy.execute(f'''
                 SELECT pgrollup_unsafedroptriggers__{rollup_name}__{pg_rollup['table_alias']}();
                 ''')
-            plpy.execute(f"""
-                UPDATE pg_rollup
-                SET last_aggregated_id=COALESCE((select max({pg_rollup['rollup_column']}) from {pg_rollup['table_name']}),0)
-                WHERE rollup_name='{rollup_name}'
-                  AND table_alias='{pg_rollup['table_alias']}';
-                """)
 
         if pg_rollup['mode'] == 'cron':
             plpy.execute(f'''
@@ -907,7 +911,7 @@ RETURNS VOID AS $func$
             sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pg_rollup['table_alias']+'();'
             plpy.execute(sql)
 
-    plpy.execute(f"UPDATE pg_rollup SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
+    plpy.execute(f"UPDATE pgrollup_rollups SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
 $func$
 LANGUAGE plpython3u;
 
