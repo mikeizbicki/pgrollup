@@ -474,6 +474,16 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 (
                 f'''
                 WHERE {self.where_clause}'''
+                +
+                (
+                '''
+                '''.join(['''
+                  AND ''' + joininfo['table_alias'] + '.' + joininfo['rollup_column'] + " <= (SELECT last_aggregated_id FROM pgrollup_rollups WHERE rollup_name='"+self.rollup_name+"' AND table_alias='"+joininfo['table_alias']+"')"
+                  for joininfo in self.joininfos if joininfo['table_alias'] not in aliases
+                    ])
+                if len(self.joininfos)>1
+                else ''
+                )
                 )
                 +
                 (

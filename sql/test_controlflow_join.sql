@@ -3,8 +3,8 @@ create or replace language plpython3u;
 create extension if not exists pg_rollup;
 
 -- FIXME:
--- Currently, only inner joins (non-self) work, and they're only tested in trigger mode.
--- I believe there may be a bug in the manual mode when tables are rolled up in separate transactions.
+-- Currently, only inner joins work, and they're only tested in trigger mode.
+-- I believe there may be a bug in the manual mode when the joined tables are rolled up in separate transactions.
 
 create temporary table testjoin1 (
     pk serial primary key,
@@ -102,9 +102,14 @@ select pgrollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup3 AS (
     SELECT
         count(t1.num),
-        count(t2.foo+1)
+        count(t2.num)
     FROM testjoin1 t1
-    JOIN testjoin2 t2 USING (id)
+    INNER JOIN testjoin1 t2 ON (t1.id=t2.num)
+    INNER JOIN testjoin1 t3 ON (t2.id=t3.num)
+    INNER JOIN testjoin1 t4 ON (t3.id=t4.num)
+    INNER JOIN testjoin1 t5 ON (t4.id=t5.num)
+    INNER JOIN testjoin1 t6 ON (t5.id=t6.num)
+    INNER JOIN testjoin1 t7 ON (t6.id=t7.num)
     GROUP BY t1.name
 );
 $$, dry_run => False);
@@ -114,10 +119,11 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
     SELECT
         sum(t1.num),
         sum(t2.foo),
-        sum(t1.num-t2.foo),
-        max(t1.num-t2.foo)
+        sum(t1.num-t3.num)
     FROM testjoin1 t1
-    JOIN testjoin2 t2 USING (id)
+    INNER JOIN testjoin2 t2 USING (id)
+    INNER JOIN testjoin1 t3 ON (t1.id=t3.num)
+    INNER JOIN testjoin1 t4 ON (t4.id=t3.num)
     GROUP BY t1.name
 );
 $$);
@@ -304,4 +310,3 @@ select assert_rollup('testjoin_rollup2');
 select assert_rollup('testjoin_rollup3');
 select assert_rollup('testjoin_rollup4');
 
---select * from testjoin_rollup1 order by name;
