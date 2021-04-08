@@ -1,8 +1,6 @@
---SET client_min_messages TO WARNING;
+SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-NOTICE:  extension "plpython3u" already exists, skipping
 create extension if not exists pg_rollup;
-NOTICE:  extension "pg_rollup" already exists, skipping
 -- FIXME:
 -- Currently, only inner joins (non-self) work, and they're only tested in trigger mode.
 -- I believe there may be a bug in the manual mode when tables are rolled up in separate transactions.
@@ -82,9 +80,6 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup1 AS (
     GROUP BY name
 );
 $$, dry_run => False);
-NOTICE:  view "testjoin_rollup1_groundtruth_raw" will be a temporary view
-NOTICE:  view "testjoin_rollup1" will be a temporary view
-NOTICE:  view "testjoin_rollup1_groundtruth" will be a temporary view
  pgrollup 
 ----------
  
@@ -100,9 +95,6 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup2 AS (
     GROUP BY name
 );
 $$);
-NOTICE:  view "testjoin_rollup2_groundtruth_raw" will be a temporary view
-NOTICE:  view "testjoin_rollup2" will be a temporary view
-NOTICE:  view "testjoin_rollup2_groundtruth" will be a temporary view
  pgrollup 
 ----------
  
@@ -118,9 +110,6 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup3 AS (
     GROUP BY t1.name
 );
 $$, dry_run => False);
-NOTICE:  view "testjoin_rollup3_groundtruth_raw" will be a temporary view
-NOTICE:  view "testjoin_rollup3" will be a temporary view
-NOTICE:  view "testjoin_rollup3_groundtruth" will be a temporary view
  pgrollup 
 ----------
  
@@ -138,9 +127,6 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
     GROUP BY t1.name
 );
 $$);
-NOTICE:  view "testjoin_rollup4_groundtruth_raw" will be a temporary view
-NOTICE:  view "testjoin_rollup4" will be a temporary view
-NOTICE:  view "testjoin_rollup4_groundtruth" will be a temporary view
  pgrollup 
 ----------
  
