@@ -5,20 +5,18 @@ Key = collections.namedtuple('Key', ['value','type','name','algebra'])
 
 ViewKey = collections.namedtuple('ViewKey', ['value','name'])
 
-
 Algebra = collections.namedtuple('Algebra', ['view','agg','hom','type','zero','plus','negate'])
 
-algebras = {
-    'count' : { 
-        'name':'count',
-        'agg':'count(x)',
-        'type':'INTEGER',
-        'zero':'0',
-        'plus':'count(x)+count(y)',
-        'negate':'-x',
-        'view':'x',
-        }
-    }
+
+
+def _getjoinvar(text):
+    '''
+    >>> _getjoinvar('using (id)')
+    'id'
+    '''
+    match = re.search('\(([a-zA-Z0-0_]+)\)',text)
+    if match:
+        return match.group(1)
 
 def _algsub(text, x='', y=''):
     '''
@@ -104,7 +102,7 @@ class Rollup:
 
     def __init__(
             self,
-            table,
+            joininfos,
             temporary,
             tablespace,
             rollup,
@@ -113,19 +111,23 @@ class Rollup:
             columns_view,
             where_clause,
             having_clause,
-            rollup_column
             ):
         self.temporary = temporary
-        self.table = table
         self.tablespace = tablespace
         self.rollup = rollup
         self.null_support = True
-        self.rollup_column = rollup_column
+        self.joininfos = joininfos
+        self.table = table = joininfos[0]['table_name']
+        self.rollup_column = joininfos[0]['rollup_column']
+
+        self.joininfos_merged = {}
+        for joininfo in joininfos:
+            self.joininfos_merged.get(joininfo['table_name'],[]).append(joininfo)
 
         self.groups = [Key(k.value, k.type, 'group_'+k.name if k.name[0]!='"' else k.name,None) for k in groups]
         self.columns_raw = sorted(columns_raw, key=lambda column: column.type['typlen'], reverse=True)
         self.columns_view = columns_view
-        self.where_clause = where_clause
+        self.where_clause = where_clause if where_clause else 'TRUE'
         self.having_clause = having_clause
 
         if '.' in table:
@@ -160,12 +162,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
     (
     '''
     '''.join([''+column.name + ' '+_algsub(column.algebra['type'],column.type['typname']) +',' for column in self.columns_raw])
+    +
+    '''
+    '''
     )+
     (
     ''',
     '''.join([key.name + ' ' + key.type['typname'] for key in self.groups])
-    if len(self.groups)>0 else '''
-    raw_true BOOLEAN DEFAULT TRUE UNIQUE NOT NULL''' )+
+    if len(self.groups)>0
+    else '''raw_true BOOLEAN DEFAULT TRUE UNIQUE NOT NULL''' )+
     '''
     ) TABLESPACE '''+self.tablespace+';\n\n')
 
@@ -189,20 +194,31 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             return ''
 
 
-    def _insert_statement(self, inverse, query):
+    def _insert_statement(self, inverse, source, aliases, temporary_table=False):
         if inverse and not all([column.algebra['negate'] for column in self.columns_raw]):
             return '''
             RAISE EXCEPTION $exception$ cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([column.algebra['agg'] for column in self.columns_raw if not column.algebra['negate']])+ '''$exception$, TG_OP;
             '''
         else:
-            return '''
-        '''.join([
+            return (
+            (
+            '''
+            CREATE TEMPORARY TABLE pgrollup_insert_tmp AS
+            '''
+            + self.create_groundtruth(source, aliases) + ''';
+            '''
+            if temporary_table
+            else ''
+            )
+            +
+            '''
+            '''.join([
             '''
             INSERT INTO '''+self.rollup_table_name+''' (
                 '''+
                 (
                 ''',
-                '''.join([''+column.name for column in self.columns_raw])
+                '''.join([column.name for column in self.columns_raw])
                 )+
                 (
                 ''',
@@ -213,17 +229,29 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 )
             SELECT 
                 '''
-                + ''',
+                +
+                ''',
                 '''.join([
                 (_algsub(column.algebra['negate'],column.name) if inverse else ' '+''+column.name)
                 for column in self.columns_raw
-            ])
-            + ''.join([''',
-                '''+key.name for key in self.groups])+'''
+                ])
+                +
+                ''.join([''',
+                '''+key.name for key in self.groups
+                ])+
+            (
+            '''
+            FROM pgrollup_insert_tmp t
+            '''
+            if temporary_table
+            else
+            '''
             FROM ( 
-                ''' + self.create_groundtruth(query) + '''
+                ''' + self.create_groundtruth(source, aliases) + '''
             ) t
-            WHERE TRUE '''+
+            '''
+            )+
+            '''WHERE TRUE '''+
                 ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.groups)])
                 ) if self.null_support else '')+'''
             ON CONFLICT '''
@@ -262,6 +290,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         if self.null_support else ''
         )
         for binary in self.binaries])
+        +
+        (
+        '''
+        DROP TABLE pgrollup_insert_tmp;
+        '''
+        if temporary_table
+        else ''
+        )
+        )
 
 
     def _sub_columns(self, text, columns):
@@ -272,80 +309,125 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
 
     def _joinsub(self, text, xtable, xval, xzero, ytable, yval, yzero,columns):
         '''
-        >>> _joinsub('hll(x)||hll(y)', 'xtable', 'xval', 'ytable', 'yval')
+        _joinsub('hll(x)||hll(y)', 'xtable', 'xval', 'ytable', 'yval')
         'xtable."hll(xval)"||ytable."hll(yval)"'
-        >>> _joinsub('xy(f(x),f(y))', 'xtable', 'xval', 'ytable', 'yval')
+        _joinsub('xy(f(x),f(y))', 'xtable', 'xval', 'ytable', 'yval')
         'xy(xtable."f(xval)",ytable."f(yval)")'
-        >>> _joinsub('avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))', 'xtable', 'xval', 'ytable', 'yval')
+        _joinsub('avg(x)*(count(x)/(count(x)+count(y)))+avg(y)*(count(y)/(count(x)+count(y)))', 'xtable', 'xval', 'ytable', 'yval')
         'xtable."avg(xval)"*(xtable."count(xval)"/(xtable."count(xval)"+ytable."count(yval)"))+ytable."avg(yval)"*(ytable."count(yval)"/(xtable."count(xval)"+ytable."count(yval)"))'
         '''
-        subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)','COALESCE('+xtable+r'."\1('+xval+')",'+xzero+')',text)
-        suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
+        subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)',xtable+r'."\1('+xval+')"',text)
+        suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)',ytable+r'."\1('+yval+')"',subx)
+        #subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)','COALESCE('+xtable+r'."\1('+xval+')",'+xzero+')',text)
+        #suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
         return self._sub_columns(suby,columns)
 
 
     def create_manualrollup(self):
-        if self.rollup_column is not None:
-            return ('''
-            CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_manualrollup(
-                start_id bigint,
-                end_id bigint
-                )
-            RETURNS VOID LANGUAGE PLPGSQL AS $$
-            BEGIN
-            '''+self._insert_statement(False, '(SELECT * FROM '+self.table+' WHERE '+self.rollup_column+'>=start_id AND '+self.rollup_column+'<=end_id) AS __table_alias')+'''
-            END;
-            $$;
-            ''')
-        else:
-            return ''
+        manualrollups = []
+        for joininfo in self.joininfos:
+            if joininfo.get('rollup_column') is not None:
+                function_name = 'pgrollup_manual_'''+self.rollup_table_name+'__'+joininfo['table_alias']
+                manualrollups.append('''
+                CREATE OR REPLACE FUNCTION '''+function_name+'''(
+                    start_id bigint,
+                    end_id bigint
+                    )
+                RETURNS VOID LANGUAGE PLPGSQL AS $$
+                BEGIN
+                '''+
+                self._insert_statement(
+                    False,
+                    '(SELECT * FROM '+self.table+' WHERE '+self.rollup_column+'>=start_id AND '+self.rollup_column+'<=end_id)',
+                    [joininfo['table_alias']]
+                    )
+                +'''
+                END;
+                $$;
+                '''+
+                f'''INSERT INTO pg_rollup 
+                    ( rollup_name
+                    , table_alias
+                    , table_name
+                    , rollup_column
+                    , event_id_sequence_name
+                    , sql
+                    , mode
+                    )
+                    values 
+                    ( '{self.rollup_name}'
+                    , '{joininfo['table_alias']}'
+                    , '{joininfo['table_name']}'
+                    , '{joininfo['rollup_column'] or 'NULL' }'
+                    , '{joininfo['event_id_sequence_name'] or 'NULL' }'
+                    , '{function_name}'
+                    , 'init'
+                    );
+                ''')
+        return '\n'.join(manualrollups)
 
 
     def create_triggerfunc(self):
         return ('''
-        CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_triggerfunc()
-        RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
-        BEGIN
-        IF TG_OP='UPDATE' OR TG_OP='INSERT' THEN'''+self._insert_statement(False, 'new_table')+'''
-        END IF;
-        IF TG_OP='UPDATE' OR TG_OP='DELETE' THEN'''+self._insert_statement(True, 'old_table')+'''
-        END IF;
-        RETURN NULL;
-        END;
-        $$;
-        ''')
+            '''.join(['''
+            CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'__'+joininfo['table_alias']+'''_triggerfunc()
+            RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
+            BEGIN
+                IF TG_OP='UPDATE' OR TG_OP='INSERT' THEN'''+self._insert_statement(False, 'new_table',[joininfo['table_alias']])+'''
+                END IF;
+                IF TG_OP='UPDATE' OR TG_OP='DELETE' THEN'''+self._insert_statement(True, 'old_table',[joininfo['table_alias']])+'''
+                END IF;
+                RETURN NULL;
+            END;
+            $$;
+
+            CREATE OR REPLACE FUNCTION pgrollup_unsafecreatetriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+'''()
+            RETURNS VOID LANGUAGE PLPGSQL AS $$
+            BEGIN
+                CREATE TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_insert
+                    AFTER INSERT
+                    ON ''' + joininfo['table_name'] + '''
+                    REFERENCING NEW TABLE AS new_table
+                    FOR EACH STATEMENT
+                    EXECUTE PROCEDURE ''' + self.rollup_table_name+'__'+joininfo['table_alias']+'''_triggerfunc();
+                CREATE TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_update
+                    AFTER UPDATE
+                    ON ''' + joininfo['table_name'] + '''
+                    REFERENCING NEW TABLE AS new_table
+                                OLD TABLE AS old_table
+                    FOR EACH STATEMENT
+                    EXECUTE PROCEDURE ''' + self.rollup_table_name+'__'+joininfo['table_alias']+'''_triggerfunc();
+                CREATE TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_delete
+                    AFTER DELETE
+                    ON ''' + joininfo['table_name'] + '''
+                    REFERENCING OLD TABLE AS old_table
+                    FOR EACH STATEMENT
+                    EXECUTE PROCEDURE ''' + self.rollup_table_name+'__'+joininfo['table_alias']+'''_triggerfunc();
+            END;
+            $$;
+
+            CREATE OR REPLACE FUNCTION pgrollup_unsafedroptriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+'''()
+            RETURNS VOID LANGUAGE PLPGSQL AS $$
+            BEGIN
+                '''
+                +
+                '''DROP TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_insert ON '''+joininfo['table_name']+''';
+                '''+
+                '''DROP TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_update ON '''+joininfo['table_name']+''';
+                '''+
+                '''DROP TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_delete ON '''+joininfo['table_name']+''';
+                '''
+                +
+                '''
+            END;
+            $$;
+            '''
+            #for table_name,joininfos in self.joininfos_merged
+            for joininfo in self.joininfos
+            ]))
 
 
-    def create_triggers(self):
-        if not self.create_triggers:
-            return ''
-        else:
-            return ('''
-        CREATE TRIGGER '''+self.rollup_name+'''_insert
-            AFTER INSERT
-            ON ''' + self.table + '''
-            REFERENCING NEW TABLE AS new_table
-            FOR EACH STATEMENT
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_triggerfunc();
-
-        CREATE TRIGGER '''+self.rollup_name+'''_update
-            AFTER UPDATE
-            ON ''' + self.table + '''
-            REFERENCING NEW TABLE AS new_table
-                        OLD TABLE AS old_table
-            FOR EACH STATEMENT
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_triggerfunc();
-
-        CREATE TRIGGER '''+self.rollup_name+'''_delete
-            AFTER DELETE
-            ON ''' + self.table + '''
-            REFERENCING OLD TABLE AS old_table
-            FOR EACH STATEMENT
-            EXECUTE PROCEDURE ''' + self.rollup_table_name+'''_triggerfunc();
-            ''')
-
-
-    def create_groundtruth(self, source):
+    def create_groundtruth(self, source=None, aliases=[]):
         return (
                 'SELECT'+
                     (
@@ -364,20 +446,29 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                         ])
                     )+
                     (
-                    ''','''+
+                    ''',
+                    '''+
                     ''',
                     '''.join([key.value + ' AS ' + key.name for key in self.groups])
                     if len(self.groups)>0 else '') +
-                    '''
-                FROM ''' + source +
+                (
+                ''.join([
+                '''
+                ''' + (joininfo['join_type']) + ' ' 
+                    + (joininfo['table_name'] if joininfo['table_alias'] not in aliases else source)
+                    + ' AS ' + joininfo['table_alias']
+                    + ' ' + joininfo['condition']
+                for joininfo in self.joininfos
+                ])
+                )
+                +
                 (
                 f'''
-                WHERE {self.where_clause}
-                '''
-                if self.where_clause else ''
-                ) +
+                WHERE {self.where_clause}'''
+                )
+                +
                 (
-                    '''
+                '''
                 GROUP BY ''' + ','.join([key.name for key in self.groups])
                 if len(self.groups)>0 else ''
                 ) +
@@ -395,7 +486,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         '''
         return ('''
         CREATE VIEW ''' + self.rollup + '''_groundtruth_raw AS (
-        '''+self.create_groundtruth(self.table_name)+'''
+        '''+self.create_groundtruth()+'''
         );'''
         )
 
@@ -417,29 +508,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             '''
             '''+
             ''',
-            '''.join([
-                (column.value
-                    if True
-                    else
-                (_algsub(column.algebra['view'],f''' "{column.algebra['name']}({column.value})" ''' + '/*'+column.value+'*/')
-                if column.algebra['plus'].lower().strip() != 'null'
-                else 
-                 #_algsub(column.algebra['view'],f''' "{column.algebra['name']}({column.value})" ''' + '/*'+column.value+'*/')
-                 #+ '/*' +
-                self._joinsub(
-                        column.algebra['view'],
-                        source,
-                        ''+column.value,
-                        column.algebra['zero'],
-                        'excluded',
-                        ''+column.value,
-                        column.algebra['zero'],
-                        self.columns_view
-                        )
-                #+ '*/'
-                ))
-                +' AS '+''+column.name for column in self.columns_view
-                ])
+            '''.join([column.value+' AS '+''+column.name for column in self.columns_view])
             )+
             (
             ''',
@@ -453,22 +522,6 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
 
 
     def create_insert(self):
-        '''
-        -- ensure that all rows already in the table get rolled up
-        INSERT INTO metahtml.metahtml_rollup_host_raw (
-            hll,
-            count,
-            host
-            )
-        SELECT
-            hll_add_agg(hll_hash_text(url)),
-            count(1),
-            metahtml.url_host(url) AS host
-        FROM metahtml.metahtml
-        WHERE
-            metahtml.url_host(url) IS NOT NULL
-        GROUP BY host;
-        '''
         return ('''
         CREATE OR REPLACE FUNCTION '''+self.rollup_table_name+'''_reset()
         RETURNS VOID LANGUAGE PLPGSQL AS $$
@@ -485,6 +538,27 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         $$;
         ''')
 
+    def create_drop(self):
+        return (f'''
+        CREATE OR REPLACE FUNCTION pgrollup_drop__'''+self.rollup_name+f'''()
+        RETURNS VOID LANGUAGE PLPGSQL AS $$
+            BEGIN
+            DROP TABLE {self.rollup_table_name} CASCADE;
+            DROP VIEW IF EXISTS {self.rollup}_groundtruth CASCADE;
+            DROP VIEW IF EXISTS {self.rollup}_groundtruth_raw CASCADE;
+            '''
+            +
+            '''
+            '''.join([
+                'DROP FUNCTION '+self.rollup_table_name+'__'+joininfo['table_alias']+'''_triggerfunc CASCADE;
+                DROP FUNCTION pgrollup_unsafecreatetriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+''' CASCADE;'''
+                for joininfo in self.joininfos])
+            +
+            f'''
+            DELETE FROM pg_rollup WHERE rollup_name='{self.rollup}';
+        END;
+        $$;
+        ''')
 
     def create(self):
         return '\n\n'.join([
@@ -496,43 +570,61 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             self.create_view_pretty(self.rollup_table_name,self.rollup),
             self.create_view_pretty(self.rollup+'_groundtruth_raw',self.rollup+'_groundtruth'),
             self.create_insert(),
+            self.create_drop(),
             ])
 
 
 
-def drop_rollup_str(rollup):
-    rollup_table_name = rollup+'_raw'
-    return (f'''
-    DROP TABLE {rollup_table_name} CASCADE;
-    DROP VIEW IF EXISTS {rollup}_groundtruth CASCADE;
-    DROP VIEW IF EXISTS {rollup}_groundtruth_raw CASCADE;
-    DROP FUNCTION {rollup_table_name}_triggerfunc CASCADE;
-    DELETE FROM pg_rollup WHERE rollup_name='{rollup}';
-''')
-
-
 if __name__ == '__main__':
+    algebras = {
+        'count' : { 
+            'name':'count',
+            'agg':'count(x)',
+            'type':'INTEGER',
+            'zero':'0',
+            'plus':'count(x)+count(y)',
+            'negate':'-x',
+            'view':'x',
+            }
+        }
+
     import doctest
     t = Rollup(
-            table='tablename',
             temporary=True,
             tablespace='tablespacename',
             rollup='rollupname',
             groups=[
-                Key('lower(country)','text','country',None),
-                Key('language','text','language',None),
+                Key('lower(country)',{'typname':'text','typlen':-1},'country',None),
+                Key('language',{'typname':'text','typlen':-1},'language',None),
                 ],
             columns_view=[
-                Key('name','text','name',algebras['count']),
-                Key('userid','int','userid',algebras['count']),
+                ViewKey('name','name'),
+                ViewKey('userid','userid'),
                 ],
             columns_raw=[
-                Key('name','text','name',algebras['count']),
-                Key('userid','int','userid',algebras['count']),
+                Key('name',{'typname':'text','typlen':-1},'name',algebras['count']),
+                Key('userid',{'typname':'int','typlen':4},'userid',algebras['count']),
                 ],
-            where_clause = None,
-            having_clause = None,
-            rollup_column = None
+            joininfos=[{
+                    'join_type': 'FROM',
+                    'table_name': 'tablename',
+                    'table_alias': 'tablename',
+                    'condition': '',
+                    'rollup_column': None,
+                },{
+                    'join_type': 'INNER JOIN',
+                    'table_name': 'example1name',
+                    'table_alias': 'example1alias',
+                    'condition': 'USING (id)',
+                },{
+                    'join_type': 'LEFT JOIN',
+                    'table_name': 'example2name',
+                    'table_alias': 'example2alias',
+                    'condition': 'ON example.id=example2.id2',
+                }
+                ],
+            where_clause = "name='test'",
+            having_clause = "usedid=1",
             )
     #doctest.testmod(extraglobs={'t': t})
     print(t.create())

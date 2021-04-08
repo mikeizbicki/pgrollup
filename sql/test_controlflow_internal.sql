@@ -10,8 +10,8 @@ create temporary table testinternal (
 
 
 select create_rollup_internal(
-    'testinternal',
     'testinternal_internal1',
+    joininfos => '[{"table_name":"testinternal","table_alias":"testinternal","condition":"","join_type":"FROM"}]',
     columns => '{{avg(num),avg}}',
     groups => '{{name,name},{num,num}}',
     having_clause => 'num = 1 OR num >3',
@@ -19,8 +19,8 @@ select create_rollup_internal(
 );
 
 select create_rollup_internal(
-    'testinternal',
     'testinternal_internal2',
+    joininfos => '[{"table_name":"testinternal","table_alias":"testinternal","condition":"","join_type":"FROM"}]',
     columns => '{{sum(num),sum},{max(num),max}}',
     groups => '{{name,name}}',
     where_clause => 'num = 1 OR num >3',

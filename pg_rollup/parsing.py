@@ -1,3 +1,11 @@
+'''
+FIXME:
+We should use postgres's parse tree rather than generate our own.
+See https://wiki.postgresql.org/wiki/Query_Parsing
+'''
+
+import json
+import pprint
 from lark import Lark
 
 
@@ -12,6 +20,11 @@ def parse_create(text):
     >>> assert parse_create(sql3)
     >>> assert parse_create(sql4)
     >>> assert parse_create(sql5)
+    >>> assert parse_create(sql6)
+    >>> assert parse_create(sql7)
+    >>> assert parse_create(sql8)
+    >>> assert parse_create(sql9)
+    >>> assert parse_create(sql10)
     >>> len(parse_create(sql0+sql1+sql2+sql3+sql4))
     5
     '''
@@ -19,7 +32,7 @@ def parse_create(text):
     infos = []
     for child in tree.find_data('create_view'):
         infos.append({
-            'table_name' : _getvalue(child,'table_name'),
+            'joininfos' : _getjoins(child),
             'rollup_name' : _getvalue(child,'rollup_name'),
             'groups' : _getvalue(child,'group_clause'),
             'columns' : _getvalue(child,'columns'),
@@ -41,7 +54,20 @@ grammar = Lark(r"""
 
     create_view: "CREATE"i "INCREMENTAL"i "MATERIALIZED"i "VIEW"i rollup_name "AS"i "(" select ")"
 
-    select: "SELECT"i columns "FROM"i table_name where_clause? group_clause? having_clause?
+    select: "SELECT"i columns select_source where_clause? group_clause? having_clause?
+
+    select_source: from joins?
+    from: "FROM"i table_name ("AS"i? table_alias)? 
+    joins: join | join joins
+    join: join_type table_name ("AS"i? table_alias)? join_condition
+    join_type: join_inner | join_left | join_right | join_full
+    join_inner: "INNER"i? "JOIN"i
+    join_left: "LEFT"i "OUTER"i? "JOIN"i
+    join_right: "RIGHT"i "OUTER"i? "JOIN"i
+    join_full: "FULL"i "OUTER"i? "JOIN"i
+    join_condition: using_condition | on_condition
+    using_condition: "USING"i "(" using_column_name ")"
+    on_condition: "ON"i blurb
 
     columns: blurbs
     where_clause: "WHERE"i blurb
@@ -53,7 +79,7 @@ grammar = Lark(r"""
     as_clause: "AS"i blurb
     blurb: blurb_rec
     blurb_rec: blurb_word blurb_rec | blurb_word
-    blurb_word: /((?!(GROUP)|(HAVING)|(FROM)|(AS)|[(),])(.|\s))+/i
+    blurb_word: /((?!(GROUP)|(HAVING)|(FROM)|(LEFT)|(RIGHT)|(FULL)|(INNER)|(OUTER)|(AS)|[(),])(.|\s))+/i
               | LPAREN blurb_inparen_rec RPAREN
     blurb_inparen_rec: blurb_inparen blurb_inparen_rec | blurb_inparen
     blurb_inparen: /[^()]+/
@@ -61,6 +87,9 @@ grammar = Lark(r"""
 
     rollup_name: NAME
     table_name: NAME
+    table_alias: NAME
+    join_table_name: NAME
+    using_column_name: NAME
 
     NAME: /[a-zA-Z_0-9]+/ 
     LPAREN: "("
@@ -76,6 +105,53 @@ grammar = Lark(r"""
 ################################################################################
 # internal helper functions
 ################################################################################
+
+
+def _getjoins(tree):
+    results = list(tree.find_data('from')) + list(reversed(list(tree.find_data('join'))))
+    joininfos = []
+    for result in results:
+        table_name = _getvalue(result,'table_name')
+
+        # extract the alias
+        table_alias = _getvalue(result, 'table_alias')
+        if table_alias is None:
+            table_alias = table_name
+        
+        # extract the join type
+        def has_field(x):
+            return len(list(result.find_data(x)))>0
+        if has_field('from'):
+            join_type='FROM'
+        elif has_field('join_inner'):
+            join_type='INNER JOIN'
+        elif has_field('join_left'):
+            join_type='LEFT JOIN'
+        elif has_field('join_right'):
+            join_type='RIGHT JOIN'
+        elif has_field('join_full'):
+            join_type='FULL JOIN'
+
+        # extract the join condition
+        on_condition = _getvalue(result,'on_condition')
+        using_condition = _getvalue(result,'using_condition')
+        if on_condition:
+            condition = 'on '+on_condition
+        elif using_condition:
+            condition = 'using ('+using_condition+')'
+        else:
+            condition = ''
+
+        # add the dictionary
+        joininfo = {
+            'table_name': table_name,
+            'table_alias': table_alias,
+            'condition': condition,
+            'join_type': join_type
+            }
+        joininfos.append(joininfo)
+    pprint.pprint(joininfos)
+    return json.dumps(joininfos)
 
 
 def _getvalue(tree, location):
@@ -181,5 +257,57 @@ CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
         (max((1 + (((num))))*2) + count(num))/count(*)
         + (max((1 + (((num))))*2) + count(num))/count(*)
     from testparsing
+);
+'''
+
+sql6='''
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    SELECT
+        count(*) AS count
+    FROM testjoin1
+    JOIN testjoin2 USING (id)
+    GROUP BY name
+);
+'''
+
+sql7='''
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    SELECT
+        count(*) AS count
+    FROM testjoin1
+    INNER JOIN testjoin2 ON testjoin1.id=testjoin2.id
+    GROUP BY name
+);
+'''
+
+sql8='''
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    SELECT
+        count(*) AS count
+    FROM testjoin1 AS t1
+    INNER JOIN testjoin2 AS t2 ON testjoin1.id=testjoin2.id
+    LEFT OUTER JOIN testjoin3 as t3 ON testjoin1.name=testjoin3.name
+    GROUP BY name
+);
+'''
+
+sql9='''
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    SELECT
+        sum(num),
+        sum(foo)
+    FROM testjoin1
+    FULL JOIN testjoin2 USING (id)
+    GROUP BY name
+);
+'''
+
+sql10='''
+CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
+    SELECT
+        sum(num)
+    FROM testjoin1
+    JOIN testjoin2 USING (id)
+    GROUP BY name
 );
 '''

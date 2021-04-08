@@ -278,13 +278,15 @@ $do$ language 'plpgsql';
 --------------------------------------------------------------------------------
 
 CREATE TABLE pg_rollup (
-    rollup_name TEXT PRIMARY KEY,
+    rollup_name TEXT NOT NULL,
+    table_alias TEXT NOT NULL,
     table_name TEXT NOT NULL,
     event_id_sequence_name TEXT,
     rollup_column TEXT,
     sql TEXT NOT NULL,
     mode TEXT NOT NULL,
-    last_aggregated_id BIGINT DEFAULT 0
+    last_aggregated_id BIGINT DEFAULT 0,
+    PRIMARY KEY (rollup_name,table_alias)
 );
 
 CREATE TABLE pg_rollup_settings (
@@ -295,8 +297,9 @@ INSERT INTO pg_rollup_settings (name,value) VALUES
     ('default_mode','trigger');
 
 /*
- * Whenever the source table for a rollup is deleted, the rollup should be deleted as well.
- * This trigger ensures the rollup gets deleted.
+ * Whenever the source table for a rollup is dropped,
+ * the rollup should be deleted as well.
+ * This trigger ensures the rollup gets dropped.
  *
  * FIXME:
  * This trigger doesn't seem to fire when a temporary table is automatically dropped at the end of a session.
@@ -332,6 +335,7 @@ CREATE EVENT TRIGGER pg_rollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pg_rol
  */
 CREATE FUNCTION incremental_rollup_window(
     rollup_name text, 
+    table_alias text,
     max_rollup_size bigint default 4611686018427387904, -- 2**62
     force_safe boolean default true,
     OUT window_start bigint,
@@ -356,7 +360,9 @@ BEGIN
     SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
     FROM pg_rollup
-    WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name FOR UPDATE;
+    WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name 
+      AND pg_rollup.table_alias = incremental_rollup_window.table_alias 
+    FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE 'rollup ''%'' is not in the pg_rollup table', rollup_name;
@@ -393,38 +399,69 @@ BEGIN
     /*
      * Remember the end of the window to continue from there next time.
      */
-    UPDATE pg_rollup SET last_aggregated_id = window_end WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name;
+    UPDATE pg_rollup SET last_aggregated_id = window_end
+    WHERE pg_rollup.rollup_name = incremental_rollup_window.rollup_name
+      AND pg_rollup.table_alias = incremental_rollup_window.table_alias;
 END;
 $function$;
 
 
 CREATE FUNCTION do_rollup(
     rollup_name text,
+    table_alias text default null,
     max_rollup_size bigint default 4611686018427387904, -- 2**62
     force_safe boolean default true,
-    delay_seconds integer default 0,
-    OUT start_id bigint, 
-    OUT end_id bigint
+    delay_seconds integer default 0
 )
-RETURNS record
+RETURNS TABLE (
+    _rollup_name TEXT,
+    _table_alias TEXT,
+    start_id BIGINT,
+    end_id BIGINT
+)
 LANGUAGE plpgsql
 AS $function$
 DECLARE
     sql_command text;
+    obj record;
+    ret record;
     mode text;
+    start_id bigint;
+    end_id bigint;
 BEGIN
+    -- if no table_alias is provided,
+    -- then we'll do a rollup on all of the table_aliases
+    -- by recursively calling do_rollup within a loop
+    IF table_alias IS NULL THEN
+        FOR obj IN SELECT * FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name
+        LOOP
+            RETURN QUERY SELECT * FROM do_rollup(
+                do_rollup.rollup_name,
+                obj.table_alias,
+                do_rollup.max_rollup_size,
+                do_rollup.force_safe,
+                do_rollup.delay_seconds
+                );
+        END LOOP;
+        RETURN;
+    END IF;
+
     /* if the rollup is in trigger mode, then there is nothing to update, so we do nothing */
-    SELECT pg_rollup.mode INTO mode FROM pg_rollup WHERE pg_rollup.rollup_name=do_rollup.rollup_name;
+    SELECT pg_rollup.mode INTO mode
+    FROM pg_rollup
+    WHERE pg_rollup.rollup_name=do_rollup.rollup_name
+      AND pg_rollup.table_alias=do_rollup.table_alias;
     IF mode != 'trigger' THEN
 
         PERFORM pg_sleep(delay_seconds);
 
         /* determine which page views we can safely aggregate */
         SELECT window_start, window_end INTO start_id, end_id
-        FROM incremental_rollup_window(rollup_name,max_rollup_size,force_safe);
+        FROM incremental_rollup_window(rollup_name,table_alias,max_rollup_size,force_safe);
 
         /* exit early if there are no new page views to aggregate */
         IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN RETURN; END IF;
+        --IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id; END IF;
 
         /* this is the new code that gets the rollup command from the table
          * and executes it */
@@ -435,13 +472,17 @@ BEGIN
 
         EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
     END IF;
+
+    -- return
+    RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id;
 END;
 $function$;
 
 
 CREATE OR REPLACE FUNCTION pgrollup(
     text TEXT,
-    dry_run BOOLEAN DEFAULT FALSE
+    dry_run BOOLEAN DEFAULT FALSE,
+    mode TEXT DEFAULT NULL
 )
 RETURNS VOID AS $$
     import pg_rollup.parsing
@@ -450,47 +491,47 @@ RETURNS VOID AS $$
         sql = f'''
         SELECT create_rollup_internal(
             $1,
-            $2,
-            columns => $3,
+            columns => $2,
+            joininfos => $3,
             groups => $4,
             where_clause => $5,
             having_clause => $6,
-            dry_run => $7
+            dry_run => $7,
+            mode => $8
         ) as result;'''
         plan = plpy.prepare(sql,[
-            'regclass',
             'text',
             'text[]',
+            'json',
             'text[]',
             'text',
             'text',
             'boolean',
+            'text',
             ])
         result = plpy.execute(plan,[
-            cmd['table_name'],
             cmd['rollup_name'],
             cmd['columns'],
+            cmd['joininfos'],
             cmd['groups'],
             cmd['where_clause'],
             cmd['having_clause'],
             dry_run,
+            mode,
             ])
 
-        if dry_run:
-            plpy.notice('the given command would execute the following SQL code:\n\n'+str(result[0]['result']))
 $$
 LANGUAGE plpython3u;
 
 
 CREATE OR REPLACE FUNCTION create_rollup_internal(
-    table_name  REGCLASS,
     rollup_name TEXT,
     columns TEXT[],
+    joininfos JSON DEFAULT '[]',
     groups TEXT[] DEFAULT NULL,
     where_clause TEXT DEFAULT NULL,
     having_clause TEXT DEFAULT NULL,
     tablespace TEXT DEFAULT NULL,
-    rollup_column TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL,
     dry_run BOOLEAN DEFAULT FALSE
     )
@@ -499,12 +540,28 @@ RETURNS TEXT AS $$
     import pg_rollup.parsing_functions
     import re
     import collections
+    import json
+
+    global joininfos
+    joininfos = json.loads(joininfos)
 
     def get_type(expr):
         '''
         helper funcions that returns the type of expr
         '''
-        sql = f'select {expr} from {table_name} limit 1;'
+        sql = (f'''
+            select {expr}
+            '''
+            +
+            ''.join([
+            '''
+            ''' + joininfo['join_type'] + ' ' + joininfo['table_name'] + ' AS ' + joininfo['table_alias'] + ' ' + joininfo['condition']
+            for joininfo in joininfos
+            ])
+            +
+            '''
+            limit 1;
+            ''')
         res = plpy.execute(sql)
         t_oid = res.coltypes()[0]
         sql = f'select typname,typlen from pg_type where oid={t_oid} limit 1;'
@@ -598,43 +655,54 @@ RETURNS TEXT AS $$
         plpy.error(f'duplicate names in columns: '+str(duplicate_names))
 
     # check if the table is temporary
-    sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{table_name}'"
-    is_temp = plpy.execute(sql)[0]['is_temp']
+    is_temp = False
+    for joininfo in joininfos:
+        sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{joininfo['table_name']}'"
+        is_temp = is_temp or plpy.execute(sql)[0]['is_temp']
 
     # compute the information needed for manual/cron rollups
-    global rollup_column
-    if rollup_column:
-        event_id_sequence_name = f"{table_name}_{rollup_column}_seq"
-    else:
-        # no rollup_column was given, so we try to use the primary key
-        sql=f'''
-        SELECT ind_column.attname AS pk
-        FROM pg_class tbl
-          INNER JOIN pg_index ind ON ind.indrelid = tbl.oid
-          INNER JOIN pg_class ind_table ON ind_table.oid = ind.indexrelid
-          INNER JOIN pg_attribute ind_column ON ind_column.attrelid = ind_table.oid
-        WHERE tbl.relname = '{table_name}'
-          AND ind.indisprimary;
-        '''
-        pks = list(plpy.execute(sql))
-
-        event_id_sequence_name = None
-        rollup_column = None
-        if len(pks) == 0:
-            plpy.warning(f'no primary key in table {table_name}')
-        elif len(pks) > 1:
-            plpy.warning(f'multi-column primary key in table {table_name}')
+    for joininfo in joininfos:
+        rollup_column = joininfo.get('rollup_column')
+        table_name = joininfo['table_name']
+        if rollup_column:
+            event_id_sequence_name = f"{table_name}_{rollup_column}_seq"
         else:
-            event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
-            rollup_column = pks[0]['pk']
+            # no rollup_column was given, so we try to use the primary key
+            sql=f'''
+            SELECT ind_column.attname AS pk
+            FROM pg_class tbl
+            JOIN pg_index ind ON ind.indrelid = tbl.oid
+            JOIN pg_class ind_table ON ind_table.oid = ind.indexrelid
+            JOIN pg_attribute ind_column ON ind_column.attrelid = ind_table.oid
+            WHERE tbl.relname = '{table_name}'
+              AND ind.indisprimary;
+            '''
+            pks = list(plpy.execute(sql))
 
-    # verify that the computed sequence exists in the db
-    sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
-    matches = list(plpy.execute(sql))
-    if len(matches) == 0:
-        plpy.warning(f'sequence "{event_id_sequence_name}" not found in table')
-        event_id_sequence_name = None
-        rollup_column = None
+            event_id_sequence_name = None
+            rollup_column = None
+            if len(pks) == 0:
+                plpy.notice(f'no primary key in table {table_name}')
+            elif len(pks) > 1:
+                plpy.notice(f'multi-column primary key in table {table_name}')
+            else:
+                event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
+                rollup_column = pks[0]['pk']
+        joininfo['rollup_column'] = rollup_column
+        joininfo['event_id_sequence_name'] = event_id_sequence_name
+
+        # verify that the computed sequence exists in the db
+        sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
+        matches = list(plpy.execute(sql))
+        if len(matches) == 0:
+            plpy.notice(f'sequence "{event_id_sequence_name}" not found in table')
+            event_id_sequence_name = None
+            rollup_column = None
+
+        # display warning messages
+        if joininfo.get('rollup_column') is None:
+            plpy.notice(f'event_id_sequence_name={event_id_sequence_name}')
+            plpy.notice('no valid sequence found for manual/cron rollups; the only available rollup type is trigger')
 
     # verify that there are no subqueries
     if where_clause and re.search(r'\(\s*select', where_clause, re.IGNORECASE):
@@ -645,7 +713,7 @@ RETURNS TEXT AS $$
     # constuct the sql statements for generating the rollup, and execute them
     # the error checking above should guarantee that there are no SQL errors below
     sqls = pg_rollup.Rollup(
-        table_name,
+        joininfos,
         is_temp,
         tablespace_name,
         rollup_name,
@@ -654,36 +722,7 @@ RETURNS TEXT AS $$
         columns_view_list,
         where_clause,
         having_clause,
-        rollup_column
     ).create()
-
-    # register the rollup in the pg_rollup table
-    if rollup_column is None:
-        plpy.warning(f'event_id_sequence_name={event_id_sequence_name}')
-        plpy.warning('no valid sequence found for manual/cron rollups; the only available rollup type is trigger')
-        rollup_column_str = 'NULL'
-        event_id_sequence_name_str = 'NULL'
-    else:
-        rollup_column_str = "'"+rollup_column+"'"
-        event_id_sequence_name_str = "'"+event_id_sequence_name+"'"
-    sqls += f"""
-    insert into pg_rollup 
-        ( rollup_name
-        , table_name
-        , rollup_column
-        , event_id_sequence_name
-        , sql
-        , mode
-        )
-        values 
-        ( '{rollup_name}'
-        , '{table_name}'
-        , {rollup_column_str}
-        , {event_id_sequence_name_str}
-        , '{rollup_name}_raw_manualrollup'
-        , 'init'
-        );
-    """
 
     # set the rollup mode
     sqls += f"""
@@ -698,7 +737,7 @@ RETURNS TEXT AS $$
     if not dry_run:
         plpy.execute(sqls)
     else:
-        return sqls
+        plpy.notice('the given command would execute the following SQL code:\n\n'+sqls)
 $$
 LANGUAGE plpython3u;
 
@@ -713,6 +752,9 @@ CREATE OR REPLACE FUNCTION create_rollup(
     )
 RETURNS VOID AS $$
     import pg_rollup
+    import json
+
+    global table_name
 
     wheres_list = pg_rollup._extract_arguments(wheres)
     if len(wheres_list)==1 and wheres_list[0].strip()=='':
@@ -732,7 +774,6 @@ RETURNS VOID AS $$
         else:
             value = group
             name = group.replace('(','_').replace(')','_').replace('*','_')
-            #FIXME: name = '"' + value + '"'
         groups_list.append([value,name])
 
     rollups_list = pg_rollup._extract_arguments(rollups)
@@ -757,101 +798,114 @@ RETURNS VOID AS $$
 
     sql = f'''SELECT create_rollup_internal(
         $1,
-        $2,
+        joininfos => $2,
         columns => $3,
         groups => $4,
         tablespace => $5,
-        rollup_column => $6,
-        mode => $7
+        mode => $6
     );'''
-    plan = plpy.prepare(sql,['regclass','text','text[]','text[]','text','text','text'])
-    plpy.execute(plan, [table_name,rollup_name,columns_list,groups_list,tablespace,key,mode])
+    plan = plpy.prepare(sql,[
+        'text',
+        'JSON',
+        'text[]',
+        'text[]',
+        'text',
+        'text'
+        ])
+    plpy.execute(plan, [
+        rollup_name,
+        json.dumps([{
+            'table_name':table_name,
+            'table_alias':table_name,
+            'condition':'',
+            'join_type':'FROM',
+            'rollup_column':key,
+            }]),
+        columns_list,
+        groups_list,
+        tablespace,
+        mode
+        ])
 $$ language plpython3u;
 
 
-CREATE OR REPLACE FUNCTION rollup_mode(rollup_name REGCLASS, mode TEXT)
+CREATE OR REPLACE FUNCTION rollup_mode(
+    rollup_name REGCLASS,
+    mode TEXT
+)
 RETURNS VOID AS $func$
     
     sql = (f"select * from pg_rollup where rollup_name='{rollup_name}'")
-    pg_rollup = plpy.execute(sql)[0]
+    rows = list(plpy.execute(sql))
 
-    if mode != 'trigger' and pg_rollup['event_id_sequence_name'] is None:
-        plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
+    for pg_rollup in rows:
+        if mode != 'trigger' and pg_rollup['event_id_sequence_name'] is None:
+            plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
 
-    ########################################    
-    # turn off the old mode
-    # NOTE:
-    # we should maintain the invariant that whenever we disable the old mode,
-    # the rollup tables are consistent with the underlying table;
-    # this requires calling the do_rollup function for all non-trigger options,
-    # which is potentially an expensive operation.
-    ########################################    
-    if pg_rollup['mode'] == 'trigger':
-        plpy.execute(f"""
-            DROP TRIGGER IF EXISTS {rollup_name}_insert ON {pg_rollup['table_name']};
-            DROP TRIGGER IF EXISTS {rollup_name}_update ON {pg_rollup['table_name']};
-            DROP TRIGGER IF EXISTS {rollup_name}_delete ON {pg_rollup['table_name']};
-            UPDATE pg_rollup SET last_aggregated_id=COALESCE((select max({pg_rollup['rollup_column']}) from {pg_rollup['table_name']}),0) WHERE rollup_name='{rollup_name}';
-            """)
-
-    if pg_rollup['mode'] == 'cron':
-        plpy.execute(f'''
-            SELECT cron.unschedule('pg_rollup.{rollup_name}');
-            ''')
-        plpy.execute(f"select do_rollup('{rollup_name}');")
-
-    if pg_rollup['mode'] == 'manual':
-        plpy.execute(f"select do_rollup('{rollup_name}');")
-
-    ########################################    
-    # enter the new mode
-    ########################################    
-    if mode=='cron':
-        # we use a "random" delay on the cron job to ensure that all of the jobs
-        # do not happen at the same time, overloading the database
-        sql = (f"select count(*) as count from cron.job where jobname ilike 'pg_rollup.%';")
-        num_jobs = plpy.execute(sql)[0]['count']
-        delay = 13*num_jobs%60
-        plpy.execute(f'''
-            SELECT cron.schedule(
-                'pg_rollup.{rollup_name}',
-                '* * * * *',
-                $$SELECT do_rollup('{rollup_name}',delay_seconds=>{delay});$$
-            );
-            ''')
-
-    if mode=='trigger':
-
-        # first we do a manual rollup to ensure that the rollup table is up to date
-        if pg_rollup['event_id_sequence_name'] is not None:
-            plpy.execute(f"select do_rollup('{rollup_name}');")
-
-        # next we create triggers
-        rollup_table_name = rollup_name+'_raw'
-        sql = ('''
-            CREATE TRIGGER '''+rollup_name+'''_insert
-                AFTER INSERT
-                ON ''' + pg_rollup['table_name'] + '''
-                REFERENCING NEW TABLE AS new_table
-                FOR EACH STATEMENT
-                EXECUTE PROCEDURE ''' + rollup_table_name+'''_triggerfunc();
-
-            CREATE TRIGGER '''+rollup_name+'''_update
-                AFTER UPDATE
-                ON ''' + pg_rollup['table_name'] + '''
-                REFERENCING NEW TABLE AS new_table
-                            OLD TABLE AS old_table
-                FOR EACH STATEMENT
-                EXECUTE PROCEDURE ''' + rollup_table_name+'''_triggerfunc();
-
-            CREATE TRIGGER '''+rollup_name+'''_delete
-                AFTER DELETE
-                ON ''' + pg_rollup['table_name'] + '''
-                REFERENCING OLD TABLE AS old_table
-                FOR EACH STATEMENT
-                EXECUTE PROCEDURE ''' + rollup_table_name+'''_triggerfunc();
+        ########################################    
+        # turn off the old mode
+        # NOTE:
+        # we should maintain the invariant that whenever we disable the old mode,
+        # the rollup tables are consistent with the underlying table;
+        # this requires calling the do_rollup function for all non-trigger options,
+        # which is potentially an expensive operation.
+        ########################################    
+        if pg_rollup['mode'] == 'trigger':
+            plpy.execute(f'''
+                SELECT pgrollup_unsafedroptriggers__{rollup_name}__{pg_rollup['table_alias']}();
                 ''')
-        plpy.execute(sql)
+            plpy.execute(f"""
+                UPDATE pg_rollup
+                SET last_aggregated_id=COALESCE((select max({pg_rollup['rollup_column']}) from {pg_rollup['table_name']}),0)
+                WHERE rollup_name='{rollup_name}'
+                  AND table_alias='{pg_rollup['table_alias']}';
+                """)
+
+        if pg_rollup['mode'] == 'cron':
+            plpy.execute(f'''
+                SELECT cron.unschedule('pg_rollup.{rollup_name}');
+                ''')
+            plpy.execute(f"""
+                select do_rollup('{rollup_name}','{pg_rollup['table_alias']}');
+                """)
+
+        if pg_rollup['mode'] == 'manual':
+            plpy.execute(f"""
+                select do_rollup('{rollup_name}','{pg_rollup['table_alias']}');
+                """)
+
+        ########################################    
+        # enter the new mode
+        ########################################    
+        if mode=='cron':
+            # we use a "random" delay on the cron job to ensure that all of the jobs
+            # do not happen at the same time, overloading the database
+            sql = (f"""
+                SELECT count(*) AS count
+                FROM cron.job
+                WHERE jobname ILIKE 'pg_rollup.%';
+                """)
+            num_jobs = plpy.execute(sql)[0]['count']
+            delay = 13*num_jobs%60
+            plpy.execute(f'''
+                SELECT cron.schedule(
+                    'pg_rollup.{rollup_name}',
+                    '* * * * *',
+                    $$SELECT do_rollup('{rollup_name}',delay_seconds=>{delay});$$
+                );
+                ''')
+
+        if mode=='trigger':
+
+            # first we do a manual rollup to ensure that the rollup table is up to date
+            if pg_rollup['event_id_sequence_name'] is not None:
+                plpy.execute(f"""
+                    select do_rollup('{rollup_name}','{pg_rollup['table_alias']}');
+                    """)
+
+            # next we create triggers
+            sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pg_rollup['table_alias']+'();'
+            plpy.execute(sql)
 
     plpy.execute(f"UPDATE pg_rollup SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
 $func$
@@ -861,7 +915,8 @@ LANGUAGE plpython3u;
 CREATE OR REPLACE FUNCTION drop_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
     import pg_rollup
-    sql = pg_rollup.drop_rollup_str(rollup_name)
+    #sql = pg_rollup.drop_rollup_str(rollup_name)
+    sql = 'select pgrollup_drop__'+rollup_name+'();'
     plpy.execute(sql)
 $$
 LANGUAGE plpython3u

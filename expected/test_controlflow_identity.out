@@ -72,9 +72,9 @@ insert into testid (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 select do_rollup('testid_rollup1');
- do_rollup 
------------
- (27,52)
+           do_rollup           
+-------------------------------
+ (testid_rollup1,testid,27,52)
 (1 row)
 
 select assert_rollup('testid_rollup1');
@@ -154,9 +154,9 @@ insert into testid2 (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 select do_rollup('testid2_rollup1');
- do_rollup 
------------
- (27,52)
+            do_rollup            
+---------------------------------
+ (testid2_rollup1,testid2,27,52)
 (1 row)
 
 select assert_rollup('testid2_rollup1');
