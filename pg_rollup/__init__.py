@@ -1,4 +1,5 @@
 import collections
+import copy
 import re
 
 Key = collections.namedtuple('Key', ['value','type','name','algebra'])
@@ -8,6 +9,49 @@ ViewKey = collections.namedtuple('ViewKey', ['value','name'])
 Algebra = collections.namedtuple('Algebra', ['view','agg','hom','type','zero','plus','negate'])
 
 
+def _alias_joininfos(joininfos, aliases):
+    '''
+    FIXME:
+    This seems to make outer joins work, but I'm not 100% sure why.
+    Also, can we get cross joins to work?
+    '''
+    if len(aliases) != 1:
+        return joininfos
+    else:
+        alias=aliases[0]
+    new_joininfos = []
+    for i,joininfo in enumerate(joininfos):
+        new_joininfo = copy.deepcopy(joininfo)
+        if joininfo['table_alias']==alias:
+            if joininfo['join_type']=='LEFT JOIN':
+                new_joininfo['join_type']='INNER JOIN'
+            if joininfo['join_type']=='FULL JOIN':
+                new_joininfo['join_type']='RIGHT JOIN'
+            if joininfo['join_type']=='RIGHT JOIN':
+                new_joininfo['join_type']='RIGHT JOIN'
+        if i==1 and joininfos[0]['table_alias']==alias:
+            if joininfo['join_type']=='LEFT JOIN':
+                new_joininfo['join_type']='LEFT JOIN'
+            if joininfo['join_type']=='FULL JOIN':
+                new_joininfo['join_type']='LEFT JOIN'
+            if joininfo['join_type']=='RIGHT JOIN':
+                new_joininfo['join_type']='INNER JOIN'
+        #if joininfo['table_alias']==alias:
+            #if joininfo['join_type']=='LEFT JOIN':
+                #new_joininfo['join_type']='INNER JOIN'
+            #if joininfo['join_type']=='FULL JOIN':
+                #new_joininfo['join_type']='INNER JOIN'
+            #if joininfo['join_type']=='INNER JOIN':
+                #new_joininfo['join_type']='INNER JOIN'
+        #if i==1 and joininfos[0]['table_alias']==alias:
+            #if joininfo['join_type']=='LEFT JOIN':
+                #new_joininfo['join_type']='INNER JOIN'
+            #if joininfo['join_type']=='FULL JOIN':
+                #new_joininfo['join_type']='INNER JOIN'
+            #if joininfo['join_type']=='RIGHT JOIN':
+                #new_joininfo['join_type']='INNER JOIN'
+        new_joininfos.append(new_joininfo)
+    return new_joininfos
 
 def _getjoinvar(text):
     '''
@@ -467,7 +511,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                     + (joininfo['table_name'] if joininfo['table_alias'] not in aliases else source)
                     + ' AS ' + joininfo['table_alias']
                     + ' ' + joininfo['condition']
-                for joininfo in self.joininfos
+                for joininfo in _alias_joininfos(self.joininfos,aliases)
                 ])
                 )
                 +
@@ -629,17 +673,22 @@ if __name__ == '__main__':
                     'table_name': 'tablename',
                     'table_alias': 'tablename',
                     'condition': '',
-                    'rollup_column': None,
+                    'rollup_column': 'pk1',
+                    'event_id_sequence_name': 'event_id_sequence_name1',
                 },{
                     'join_type': 'INNER JOIN',
                     'table_name': 'example1name',
                     'table_alias': 'example1alias',
                     'condition': 'USING (id)',
+                    'rollup_column': 'pk2',
+                    'event_id_sequence_name': 'event_id_sequence_name2',
                 },{
                     'join_type': 'LEFT JOIN',
                     'table_name': 'example2name',
                     'table_alias': 'example2alias',
                     'condition': 'ON example.id=example2.id2',
+                    'rollup_column': 'pk3',
+                    'event_id_sequence_name': 'event_id_sequence_name3',
                 }
                 ],
             where_clause = "name='test'",

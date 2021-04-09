@@ -1,9 +1,6 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
--- FIXME:
--- Currently, only inner joins work, and they're only tested in trigger mode.
--- I believe there may be a bug in the manual mode when the joined tables are rolled up in separate transactions.
 create temporary table testjoin1 (
     pk serial primary key,
     id int,
@@ -120,6 +117,7 @@ $$, dry_run => False);
  
 (1 row)
 
+/*
 select pgrollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
     SELECT
@@ -133,6 +131,18 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
     GROUP BY t1.name
 );
 $$);
+*/
+select pgrollup($$
+CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
+    SELECT
+        sum(t1.num),
+        sum(t2.foo)
+    FROM testjoin1 t1
+    FULL OUTER JOIN testjoin2 t2 USING (id)
+    FULL JOIN testjoin1 t3 ON (t1.id=t3.num)
+    GROUP BY t1.name
+);
+$$, dry_run => False);
  pgrollup 
 ----------
  
@@ -404,4 +414,20 @@ select assert_rollup('testjoin_rollup4');
 ---------------
  
 (1 row)
+
+select * from testjoin_rollup4; 
+ sum(t1.num) | sum(t2.foo) | t1.name 
+-------------+-------------+---------
+          24 |          24 | charlie
+         400 |         400 | bill
+         520 |         520 | alice
+(3 rows)
+
+select * from testjoin_rollup4_groundtruth; 
+ sum(t1.num) | sum(t2.foo) | t1.name 
+-------------+-------------+---------
+          24 |          24 | charlie
+         400 |         400 | bill
+         520 |         520 | alice
+(3 rows)
 
