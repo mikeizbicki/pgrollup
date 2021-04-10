@@ -36,20 +36,6 @@ def _alias_joininfos(joininfos, aliases):
                 new_joininfo['join_type']='LEFT JOIN'
             if joininfo['join_type']=='RIGHT JOIN':
                 new_joininfo['join_type']='INNER JOIN'
-        #if joininfo['table_alias']==alias:
-            #if joininfo['join_type']=='LEFT JOIN':
-                #new_joininfo['join_type']='INNER JOIN'
-            #if joininfo['join_type']=='FULL JOIN':
-                #new_joininfo['join_type']='INNER JOIN'
-            #if joininfo['join_type']=='INNER JOIN':
-                #new_joininfo['join_type']='INNER JOIN'
-        #if i==1 and joininfos[0]['table_alias']==alias:
-            #if joininfo['join_type']=='LEFT JOIN':
-                #new_joininfo['join_type']='INNER JOIN'
-            #if joininfo['join_type']=='FULL JOIN':
-                #new_joininfo['join_type']='INNER JOIN'
-            #if joininfo['join_type']=='RIGHT JOIN':
-                #new_joininfo['join_type']='INNER JOIN'
         new_joininfos.append(new_joininfo)
     return new_joininfos
 
@@ -164,6 +150,8 @@ class Rollup:
         self.table = table = joininfos[0]['table_name']
         self.rollup_column = joininfos[0]['rollup_column']
 
+        self.invertable = all([column.algebra['negate'] for column in columns_raw])
+
         self.joininfos_merged = {}
         for joininfo in joininfos:
             self.joininfos_merged.get(joininfo['table_name'],[]).append(joininfo)
@@ -237,21 +225,15 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         else:
             return ''
 
-
-    def _insert_statement(self, inverse, source, aliases, temporary_table=False):
-        if inverse and not all([column.algebra['negate'] for column in self.columns_raw]):
-            return '''
-            RAISE EXCEPTION $exception$ cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([column.algebra['agg'] for column in self.columns_raw if not column.algebra['negate']])+ '''$exception$, TG_OP;
-            '''
-        else:
+    def _insert_table(self, table, use_temporary_table=False):
             return (
             (
             '''
             CREATE TEMPORARY TABLE pgrollup_insert_tmp AS
             '''
-            + self.create_groundtruth(source, aliases) + ''';
+            + table + ''';
             '''
-            if temporary_table
+            if use_temporary_table
             else ''
             )
             +
@@ -270,34 +252,19 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 ''',
                 '''.join([key.name for key in self.groups])
                 if len(self.groups)>0 else '' )+ '''
-                )
-            SELECT 
-                '''
-                +
-                ''',
-                '''.join([
-                (_algsub(column.algebra['negate'],column.name) if inverse else ' '+''+column.name)
-                for column in self.columns_raw
-                ])
-                +
-                ''.join([''',
-                '''+key.name for key in self.groups
-                ])+
-            (
+                ) 
+            SELECT * FROM (
             '''
-            FROM pgrollup_insert_tmp t
+            +
+            table
+            +
             '''
-            if temporary_table
-            else
-            '''
-            FROM ( 
-                ''' + self.create_groundtruth(source, aliases) + '''
             ) t
-            '''
-            )+
-            '''WHERE TRUE '''+
+            WHERE TRUE '''+
                 ((' '.join(['AND t.' + key.name + ' IS ' + ('' if i=='0' else 'NOT ') + 'NULL' for i,key in zip(binary,self.groups)])
-                ) if self.null_support else '')+'''
+                ) if self.null_support else '')
+            +
+            '''
             ON CONFLICT '''
             ' (' + 
             (','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.groups)]) if len(self.groups)>0 else 'raw_true'
@@ -328,7 +295,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                     for column in self.columns_raw
                     ])
                 )+
-                ''';
+                '''
+                ;
         '''+
         (''
         if self.null_support else ''
@@ -339,10 +307,30 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         '''
         DROP TABLE pgrollup_insert_tmp;
         '''
-        if temporary_table
+        if use_temporary_table
         else ''
         )
         )
+
+
+    def _insert_statement(self, inverse, source, aliases, temporary_table=False):
+        if inverse and not self.invertable:
+            return '''
+            RAISE EXCEPTION $exception$ cannot % on table '''+self.rollup_table_name+''' with a rollup using op ''' + str([column.algebra['agg'] for column in self.columns_raw if not column.algebra['negate']])+ '''$exception$, TG_OP;
+            '''
+        result = self._insert_table(self.create_groundtruth(source, aliases, inverse))
+
+        # FIXME: fix this for outer joins
+        if False and self.invertable and len(self.joininfos)>1 and self.joininfos[0]['table_alias']==aliases[0]:
+            result += self._insert_table(
+            '''
+            SELECT * FROM (
+                ''' + self.create_joinsubtractor(source, aliases, inverse) + '''
+            ) t2 '''
+            if self.invertable
+            else ''
+            )
+        return result
 
 
     def _sub_columns(self, text, columns):
@@ -480,7 +468,23 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             ]))
 
 
-    def create_groundtruth(self, source=None, aliases=[]):
+    def create_joinsubtractor(self, source, aliases=[], negate=False):
+        #for alias_index,joininfo in enumerate(self.joininfos):
+            #if joininfo['table_alias']==aliases[0]:
+                #break
+        #from_clause = (
+                #''.join([
+                #'''
+                #''' + (joininfo['join_type']) + ' ' 
+                    #+ (joininfo['table_name'] 
+                      #)
+                    #+ ' AS ' + joininfo['table_alias']
+                    #+ ' ' + joininfo['condition']
+                #for joininfo in self.joininfos[:alias_index+1]
+                #])
+                #)
+        #new_where = self.joininfos[alias_index]['table_alias']+'.num1 in (SELECT '+self.joininfos[alias_index-1]['table_alias']+'.num1 ' + from_clause + ')'
+        new_where = 'num1 in (SELECT num1 FROM ' + source + ' t )'
         return (
                 'SELECT'+
                     (
@@ -489,10 +493,98 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                     ''',
                     '''.join([
                         'COALESCE('+
+                        (
                         _algsub(
                             column.algebra['agg'],
                             column.value
                             )
+                        if not not negate else
+                        _algsub(
+                            column.algebra['negate'],
+                            _algsub(
+                                column.algebra['agg'],
+                                column.value
+                                )
+                            )
+                        )
+                        +','+column.algebra['zero']+')'
+                        +' AS '+''+column.name
+                        for column in self.columns_raw
+                        ])
+                    )+
+                    (
+                    ''',
+                    '''+
+                    ''',
+                    '''.join([key.value + ' AS ' + key.name for key in self.groups])
+                    if len(self.groups)>0 else '') +
+                (
+                ''.join([
+                '''
+                ''' + (joininfo['join_type'] if joininfo['join_type'] != 'RIGHT JOIN' else 'FULL JOIN') + ' ' 
+                    + (joininfo['table_name'] 
+                       if joininfo['table_alias'] not in aliases
+                       else '( SELECT * FROM '+joininfo['table_name']+' LIMIT 0)'
+                      )
+                    + ' AS ' + joininfo['table_alias']
+                    + ' ' + joininfo['condition']
+                for joininfo in self.joininfos
+                ])
+                )
+                +
+                (
+                f'''
+                WHERE ({self.where_clause})
+                  AND ''' + new_where 
+                +
+                (
+                '''
+                '''.join(['''
+                  AND (''' + joininfo['table_alias'] + '.' + joininfo['rollup_column'] + " IS NULL OR "
+                           + joininfo['table_alias'] + '.' + joininfo['rollup_column'] + " <= (SELECT last_aggregated_id FROM pgrollup_rollups WHERE rollup_name='"+self.rollup_name+"' AND table_alias='"+joininfo['table_alias']+"'))"
+                  for joininfo in self.joininfos if joininfo['table_alias'] not in aliases
+                    ])
+                if len(self.joininfos)>1
+                else ''
+                )
+                )
+                +
+                (
+                '''
+                GROUP BY ''' + ','.join([key.name for key in self.groups])
+                if len(self.groups)>0 else ''
+                ) +
+                (
+                f'''
+                HAVING ({self.having_clause})
+                '''
+                if self.having_clause else ''
+                )
+            )
+
+    def create_groundtruth(self, source=None, aliases=[], negate=False):
+        return (
+                'SELECT'+
+                    (
+                    '''
+                    '''+
+                    ''',
+                    '''.join([
+                        'COALESCE('+
+                        (
+                        _algsub(
+                            column.algebra['agg'],
+                            column.value
+                            )
+                        if not negate else
+                        _algsub(
+                            column.algebra['negate'],
+                            _algsub(
+                                column.algebra['agg'],
+                                column.value
+                                )
+                            )
+                        )
                         +','+column.algebra['zero']+')'
                         +' AS '+''+column.name
                         for column in self.columns_raw
@@ -517,12 +609,13 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 +
                 (
                 f'''
-                WHERE {self.where_clause}'''
+                WHERE ({self.where_clause})'''
                 +
                 (
                 '''
                 '''.join(['''
-                  AND ''' + joininfo['table_alias'] + '.' + joininfo['rollup_column'] + " <= (SELECT last_aggregated_id FROM pgrollup_rollups WHERE rollup_name='"+self.rollup_name+"' AND table_alias='"+joininfo['table_alias']+"')"
+                  AND (''' + joininfo['table_alias'] + '.' + joininfo['rollup_column'] + " IS NULL OR "
+                           + joininfo['table_alias'] + '.' + joininfo['rollup_column'] + " <= (SELECT last_aggregated_id FROM pgrollup_rollups WHERE rollup_name='"+self.rollup_name+"' AND table_alias='"+joininfo['table_alias']+"'))"
                   for joininfo in self.joininfos if joininfo['table_alias'] not in aliases
                     ])
                 if len(self.joininfos)>1
@@ -537,7 +630,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 ) +
                 (
                 f'''
-                HAVING {self.having_clause}
+                HAVING ({self.having_clause})
                 '''
                 if self.having_clause else ''
                 )

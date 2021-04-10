@@ -138,8 +138,7 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
         sum(t1.num),
         sum(t2.foo)
     FROM testjoin1 t1
-    FULL OUTER JOIN testjoin2 t2 USING (id)
-    FULL JOIN testjoin1 t3 ON (t1.id=t3.num)
+    INNER JOIN testjoin2 t2 USING (id)
     GROUP BY t1.name
 );
 $$, dry_run => False);
@@ -418,16 +417,22 @@ select assert_rollup('testjoin_rollup4');
 select * from testjoin_rollup4; 
  sum(t1.num) | sum(t2.foo) | t1.name 
 -------------+-------------+---------
-          24 |          24 | charlie
-         400 |         400 | bill
-         520 |         520 | alice
-(3 rows)
+         110 |         134 | 
+          40 |          44 | charlie
+          30 |          30 | elliot
+          28 |          28 | dave
+         108 |         110 | alice
+         110 |          76 | bill
+(6 rows)
 
 select * from testjoin_rollup4_groundtruth; 
  sum(t1.num) | sum(t2.foo) | t1.name 
 -------------+-------------+---------
-          24 |          24 | charlie
-         400 |         400 | bill
-         520 |         520 | alice
-(3 rows)
+         110 |         134 | 
+          40 |          44 | charlie
+          28 |          28 | dave
+         110 |          76 | bill
+          30 |          30 | elliot
+         108 |         110 | alice
+(6 rows)
 

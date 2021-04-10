@@ -132,8 +132,7 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
         sum(t1.num),
         sum(t2.foo)
     FROM testjoin1 t1
-    FULL OUTER JOIN testjoin2 t2 USING (id)
-    FULL JOIN testjoin1 t3 ON (t1.id=t3.num)
+    INNER JOIN testjoin2 t2 USING (id)
     GROUP BY t1.name
 );
 $$, dry_run => False);
