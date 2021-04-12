@@ -91,7 +91,7 @@ grammar = Lark(r"""
     join_table_name: NAME
     using_column_name: NAME
 
-    NAME: /[a-zA-Z_0-9]+/ 
+    NAME: /[a-zA-Z_.0-9]+/ 
     LPAREN: "("
     RPAREN: ")"
     COMMA: ","

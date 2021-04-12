@@ -489,6 +489,67 @@ END;
 $function$;
 
 
+CREATE OR REPLACE FUNCTION pgrollup_manage_all(
+    dry_run BOOLEAN DEFAULT FALSE,
+    mode TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+    sql="""
+    SELECT matviewname
+    FROM pg_matviews;
+    """
+    rows = plpy.execute(sql)
+    for row in rows:
+        sql="""
+        SELECT pgrollup_manage('"""+row['matviewname']+"',"+str(dry_run)+","+('NULL' if not mode else mode)+""");
+        """
+        plpy.execute(sql)
+$$
+LANGUAGE plpython3u;
+
+CREATE OR REPLACE FUNCTION pgrollup_manage(
+    view_name REGCLASS,
+    dry_run BOOLEAN DEFAULT FALSE,
+    mode TEXT DEFAULT NULL
+)
+RETURNS VOID AS $$
+    sql="""
+    SELECT view_definition
+    FROM information_schema.views
+    WHERE table_name = '"""+view_name+"""';
+    """
+    #rows = plpy.execute(sql)
+    #view_definition = rows[0]['view_definition']
+    sql="""
+    SELECT definition
+    FROM pg_matviews
+    WHERE matviewname='"""+view_name+"""';
+    """
+    rows = plpy.execute(sql)
+    view_definition = rows[0]['definition']
+
+    if not dry_run:
+        sql = """
+        DROP MATERIALIZED VIEW """+view_name+""";
+        """
+        plpy.execute(sql)
+
+    query = """
+    CREATE INCREMENTAL MATERIALIZED VIEW """+view_name+""" AS (
+    """+view_definition[:-1]+"""
+    );
+    """
+    sql = """
+    SELECT pgrollup($pgrollup$
+    """+query+"""
+    $pgrollup$,"""+str(dry_run)+","+('NULL' if not mode else mode)+""")
+    """
+    plpy.execute(sql)
+$$
+LANGUAGE plpython3u;
+
+
+
 CREATE OR REPLACE FUNCTION pgrollup(
     text TEXT,
     dry_run BOOLEAN DEFAULT FALSE,
@@ -611,7 +672,7 @@ RETURNS TEXT AS $$
     # columns_view_list contains the columns that will be included in the created view
     columns_view_list = []
     raw_columns = []
-    for value,name in columns:
+    for value,name in [ column for column in columns if column not in groups ]:
         value_substitute_views = pg_rollup.parsing_functions.substitute_views(value, all_algebras)
         deps, value_view = pg_rollup.parsing_functions.extract_algebras(value_substitute_views, all_algebras)
         columns_view_list.append(pg_rollup.ViewKey(value_view,name))
