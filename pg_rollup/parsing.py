@@ -25,6 +25,8 @@ def parse_create(text):
     >>> assert parse_create(sql8)
     >>> assert parse_create(sql9)
     >>> assert parse_create(sql10)
+    >>> assert parse_create(sql11)
+    >>> assert parse_create(sql12)
     >>> len(parse_create(sql0+sql1+sql2+sql3+sql4))
     5
     '''
@@ -56,10 +58,10 @@ grammar = Lark(r"""
 
     select: "SELECT"i columns select_source where_clause? group_clause? having_clause?
 
-    select_source: from joins?
-    from: "FROM"i table_name ("AS"i? table_alias)? 
+    select_source: "FROM"i from joins? | "FROM"i "("+ from joins? 
+    from: table_name ("AS"i? table_alias)? 
     joins: join | join joins
-    join: join_type table_name ("AS"i? table_alias)? join_condition
+    join: join_type table_name ("AS"i? table_alias)? join_condition ")"?
     join_type: join_inner | join_left | join_right | join_full
     join_inner: "INNER"i? "JOIN"i
     join_left: "LEFT"i "OUTER"i? "JOIN"i
@@ -150,7 +152,7 @@ def _getjoins(tree):
             'join_type': join_type
             }
         joininfos.append(joininfo)
-    pprint.pprint(joininfos)
+    #pprint.pprint(joininfos)
     return json.dumps(joininfos)
 
 
@@ -311,3 +313,28 @@ CREATE INCREMENTAL MATERIALIZED VIEW testparsing_rollup7 AS (
     GROUP BY name
 );
 '''
+
+sql11='''
+	    CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup1 AS (
+	     SELECT sum(t1.num) AS sum_num,
+    sum(t2.foo) AS sum_foo
+   FROM (testjoin1 t1
+     JOIN testjoin2 t2 USING (id))
+  GROUP BY t1.name
+	    );
+'''
+
+sql12='''
+	    CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup3 AS (
+	     SELECT count(t1.num) AS count_t1,
+    count(t2.num) AS count_t2
+   FROM ((((((testjoin1 t1
+     JOIN testjoin1 t2 ON ((t1.id = t2.num)))
+     JOIN testjoin1 t3 ON ((t2.id = t3.num)))
+     JOIN testjoin1 t4 ON ((t3.id = t4.num)))
+     JOIN testjoin1 t5 ON ((t4.id = t5.num)))
+     JOIN testjoin1 t6 ON ((t5.id = t6.num)))
+     JOIN testjoin1 t7 ON ((t6.id = t7.num)))
+  GROUP BY t1.name
+	    );
+            '''

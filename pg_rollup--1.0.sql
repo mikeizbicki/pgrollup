@@ -539,6 +539,7 @@ RETURNS VOID AS $$
     """+view_definition[:-1]+"""
     );
     """
+    plpy.notice('query=\n'+query)
     sql = """
     SELECT pgrollup($pgrollup$
     """+query+"""

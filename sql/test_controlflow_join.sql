@@ -2,14 +2,14 @@ SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
 
-create temporary table testjoin1 (
+create table testjoin1 (
     pk serial primary key,
     id int,
     name text,
     num int
 );
 
-create temporary table testjoin2 (
+create table testjoin2 (
     pk serial primary key,
     id int,
     str text,
@@ -72,22 +72,22 @@ insert into testjoin2 (id,str,foo) values
     (924,NULL, NULL),
     (025,NULL, NULL);
 
-select pgrollup($$
-CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup1 AS (
+CREATE MATERIALIZED VIEW testjoin_rollup1 AS (
     SELECT
-        sum(num),
-        sum(foo)
+        sum(num) AS sum_num,
+        sum(foo) AS sum_foo
     FROM testjoin1 AS t1
     JOIN testjoin2 AS t2 USING (id)
     GROUP BY name
 );
-$$, dry_run => False);
+
+select pgrollup_manage_all();
 
 select pgrollup($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup2 AS (
     SELECT
-        sum(num),
-        sum(foo)
+        sum(num) AS sum_num,
+        sum(foo) AS sum_foo
     FROM testjoin1 t1
     JOIN testjoin2 t2 ON (t1.id=t2.id)
     GROUP BY name
@@ -322,3 +322,11 @@ select assert_rollup('testjoin_rollup4');
 select * from testjoin_rollup4; 
 
 select * from testjoin_rollup4_groundtruth; 
+
+select drop_rollup('testjoin_rollup1');
+select drop_rollup('testjoin_rollup2');
+select drop_rollup('testjoin_rollup3');
+select drop_rollup('testjoin_rollup4');
+
+drop table testjoin1 cascade;
+drop table testjoin2 cascade;
