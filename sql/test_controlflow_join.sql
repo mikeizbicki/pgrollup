@@ -81,9 +81,9 @@ CREATE MATERIALIZED VIEW testjoin_rollup1 AS (
     GROUP BY name
 );
 
-select pgrollup_manage_all();
+select pgrollup_convert_all();
 
-select pgrollup($$
+select pgrollup_parse($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup2 AS (
     SELECT
         sum(num) AS sum_num,
@@ -94,7 +94,7 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup2 AS (
 );
 $$);
 
-select pgrollup($$
+select pgrollup_parse($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup3 AS (
     SELECT
         count(t1.num),
@@ -111,7 +111,7 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup3 AS (
 $$, dry_run => False);
 
 /*
-select pgrollup($$
+select pgrollup_parse($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
     SELECT
         sum(t1.num),
@@ -126,7 +126,7 @@ CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
 $$);
 */
 
-select pgrollup($$
+select pgrollup_parse($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup4 AS (
     SELECT
         sum(t1.num),

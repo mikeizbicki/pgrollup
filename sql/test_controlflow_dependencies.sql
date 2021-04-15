@@ -11,7 +11,7 @@ SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
 
-create temporary table testdeps (
+create table testdeps (
     id serial primary key,
     a int,
     b int
@@ -45,77 +45,65 @@ insert into testdeps (a,b) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup1',
-    wheres => 'a',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup1 AS (
+    SELECT
+        a,
         avg(b)
-    $$
+    FROM testdeps
+    GROUP BY a
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup2',
-    wheres => 'a',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup2 AS (
+    SELECT
+        a,
         var_pop(b)
-    $$
+    FROM testdeps
+    GROUP BY a
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup3',
-    wheres => 'a',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup3 AS (
+    SELECT
+        a,
         count(b),
         var_pop(b)
-    $$
+    FROM testdeps
+    GROUP BY a
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup4',
-    wheres => 'a',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup4 AS (
+    SELECT
+        a,
         count(*),
         var_pop(b)
-    $$
+    FROM testdeps
+    GROUP BY a
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup5',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup5 AS (
+    SELECT
         avg(a),
         var_pop(b)
-    $$
+    FROM testdeps
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup6',
-    rollups => $$
-        var_pop(a),
-        var_pop(b)
-    $$
+CREATE MATERIALIZED VIEW testdeps_rollup6 AS (
+    SELECT
+        var_pop(a) AS var_pop_a,
+        var_pop(b) AS var_pop_b
+    FROM testdeps
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup7',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup7 AS (
+    SELECT
         var_pop(a),
         variance(b)
-    $$
+    FROM testdeps
 );
 
-select create_rollup(
-    'testdeps',
-    'testdeps_rollup8',
-    rollups => $$
+CREATE MATERIALIZED VIEW testdeps_rollup8 AS (
+    SELECT
         variance(b)
-    $$
+    FROM testdeps
 );
 
 insert into testdeps (a,b) values
@@ -145,3 +133,5 @@ insert into testdeps (a,b) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
+
+drop table testdeps cascade;

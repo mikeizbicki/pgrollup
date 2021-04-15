@@ -8,7 +8,7 @@ SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
 
-create temporary table nulltest (
+create table nulltest (
     id serial primary key,
     name text,
     num int
@@ -17,41 +17,38 @@ create temporary table nulltest (
 insert into nulltest (name,num) values
     (NULL, NULL);
 
-select create_rollup(
-    'nulltest',
-    'nulltest_rollup1',
-    wheres => 'name'
+create materialized view nulltest_rollup1 as (
+    select count(*),name
+    from nulltest
+    group by name
 );
 
-select create_rollup(
-    'nulltest',
-    'nulltest_rollup2',
-    wheres => 'name,num'
+create materialized view nulltest_rollup2 as (
+    select count(*),name,num
+    from nulltest
+    group by name,num
 );
 
-select create_rollup(
-    'nulltest',
-    'nulltest_rollup3',
-    wheres => 'name',
-    rollups => $$
+create materialized view nulltest_rollup3 as (
+    select
+        name,
+        sum(num) as sum,
+        count(*) as count_all,
+        count(num) count_num,
+        max(num),
+        min(num)
+    from nulltest
+    group by name
+);
+
+create materialized view nulltest_rollup4 as (
+    select 
         sum(num) as sum,
         count(*) as count_all,
         count(num),
         max(num),
         min(num)
-    $$
-);
-
-select create_rollup(
-    'nulltest',
-    'nulltest_rollup4',
-    rollups => $$
-        sum(num) as sum,
-        count(*) as count_all,
-        count(num),
-        max(num),
-        min(num)
-    $$
+    from nulltest
 );
 
 select assert_rollup('nulltest_rollup1');
@@ -150,3 +147,5 @@ select assert_rollup('nulltest_rollup4');
 
 select * from nulltest_rollup3_raw;
 select * from nulltest_rollup3_groundtruth_raw;
+
+drop table nulltest cascade;

@@ -2,7 +2,7 @@ SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
 
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
@@ -36,16 +36,16 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name'
+create materialized view test_rollup1 as (
+    select name,count(*)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup2',
-    wheres => 'name,num'
+create materialized view test_rollup2 as (
+    select name,num,count(*)
+    from test
+    group by name,num
 );
 
 
@@ -118,16 +118,16 @@ select assert_rollup('test_rollup2');
 
 select drop_rollup('test_rollup2');
 
-select create_rollup(
-    'test',
-    'test_rollup2',
-    wheres => 'name'
+create materialized view test_rollup2 as (
+    select name,count(*)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name,num'
+create materialized view test_rollup1 as (
+    select name,num,count(*)
+    from test
+    group by name,num
 );
 
 select assert_rollup('test_rollup1');
@@ -138,22 +138,22 @@ select assert_rollup('test_rollup2');
 
 drop table test cascade;
 
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
 );
 
-select create_rollup(
-    'test',
-    'test_rollup2',
-    wheres => 'name'
+create materialized view test_rollup2 as (
+    select name,sum(num)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name,num'
+create materialized view test_rollup1 as (
+    select num,count(*)
+    from test
+    group by num
 );
 
 select assert_rollup('test_rollup1');

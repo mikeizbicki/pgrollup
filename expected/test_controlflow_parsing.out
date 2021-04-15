@@ -103,12 +103,6 @@ CREATE MATERIALIZED VIEW testparsing_rollup9 AS (
     where
         num in (1, 2, 3)
 ) WITH NO DATA;
-select pgrollup_manage_all();
- pgrollup_manage_all 
----------------------
- 
-(1 row)
-
 select * from testparsing_rollup9;
  count 
 -------

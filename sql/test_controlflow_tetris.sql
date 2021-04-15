@@ -15,8 +15,6 @@ CREATE MATERIALIZED VIEW testtetris_rollup1 AS (
     FROM testtetris
 );
 
-select pgrollup_manage_all();
-
 select * from testtetris_rollup1_raw;
 
 -- FIXME: add more column types

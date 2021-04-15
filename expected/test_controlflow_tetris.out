@@ -12,12 +12,6 @@ CREATE MATERIALIZED VIEW testtetris_rollup1 AS (
         bool_and(val)
     FROM testtetris
 );
-select pgrollup_manage_all();
- pgrollup_manage_all 
----------------------
- 
-(1 row)
-
 select * from testtetris_rollup1_raw;
  sum(testtetris.num) | bool_and(testtetris.val) | raw_true 
 ---------------------+--------------------------+----------

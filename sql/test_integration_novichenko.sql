@@ -88,85 +88,66 @@ insert into metahtml (accessed_at, url, jsonb) values
     ('2020-01-04 00:00:00', 'https://google.com', '{}'),
     ('2020-01-05 00:00:00', 'https://google.com', '{}');
 
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup1',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup1 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         url_host_key(url) AS host_key,
         date_trunc('day', accessed_at) AS access_day
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY host_key, access_day
 );
 
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup2',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup2 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         url_host_key(url) AS host_key
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY host_key
 );
 
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup3',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup3 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         date_trunc('day', accessed_at) AS access_day
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY access_day
 );
 
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup4',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup4 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY timestamp_published
 );
 
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup5',
-    wheres => $$
-        date_trunc('day', accessed_at) AS access_day,
-        date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+CREATE MATERIALIZED VIEW metahtml_rollup5 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
+        date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published,
+        date_trunc('day', accessed_at) AS access_day
+    FROM metahtml
+    GROUP BY timestamp_published,access_day
 );
 
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup_links',
-    wheres => $$
-        jsonb_array_elements(jsonb->'links'->'best'->'value')->>'href' AS links,
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath,
-        hll(url_host_key(url)) AS host,
-    $$
+CREATE MATERIALIZED VIEW metahtml_rollup6 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
+        jsonb_array_elements(jsonb->'links'->'best'->'value')->>'href' AS links
+    FROM metahtml
+    GROUP BY links
 );
 
 insert into metahtml (accessed_at, url, jsonb) values

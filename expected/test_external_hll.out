@@ -3,7 +3,7 @@ create or replace language plpython3u;
 create extension if not exists hll;
 drop extension pg_rollup;
 create extension if not exists pg_rollup;
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
@@ -35,30 +35,22 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name',
-    rollups => 'hll(num)'
+CREATE MATERIALIZED VIEW test_rollup1 AS (
+    SELECT
+        name,
+        round(hll_cardinality(hll_add_agg(hll_hash_text(name)))) AS distinct_name,
+        round(hll_cardinality(hll_add_agg(hll_hash_integer(num)))) AS distinct_num
+    FROM test
+    GROUP BY name
 );
- create_rollup 
----------------
- 
-(1 row)
-
-select create_rollup(
-    'test',
-    'test_rollup2',
-    rollups => $$
-        hll(name),
-        hll(num)
-    $$
+CREATE MATERIALIZED VIEW test_rollup2 AS (
+    SELECT
+        name,
+        hll_count(name) AS distinct_name,
+        hll_count(num)  AS distinct_num
+    FROM test
+    GROUP BY name
 );
- create_rollup 
----------------
- 
-(1 row)
-
 select assert_rollup('test_rollup1');
  assert_rollup 
 ---------------
@@ -110,3 +102,26 @@ select assert_rollup('test_rollup2');
  
 (1 row)
 
+select * from test_rollup1;
+ distinct_name | distinct_num | test.name 
+---------------+--------------+-----------
+             0 |            3 | 
+             1 |            5 | alice
+             1 |            1 | bill
+             1 |            2 | charlie
+             1 |            1 | dave
+             1 |            1 | elliot
+(6 rows)
+
+select * from test_rollup2;
+ distinct_name | distinct_num | test.name 
+---------------+--------------+-----------
+             0 |            3 | 
+             1 |            5 | alice
+             1 |            1 | bill
+             1 |            2 | charlie
+             1 |            1 | dave
+             1 |            1 | elliot
+(6 rows)
+
+drop table test cascade;

@@ -1,14 +1,12 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
-create temporary table testfloat (
+create table testfloat (
     id serial primary key,
     num bigint
 );
-select create_rollup(
-    'testfloat',
-    'testfloat_rollup1',
-    rollups => $$
+create materialized view testfloat_rollup1 as (
+    select 
         count(num),
         avg(num),
         var_pop(num),
@@ -17,76 +15,71 @@ select create_rollup(
         stddev(num),
         stddev_pop(num),
         stddev_samp(num)
-    $$
+    from testfloat
 );
- create_rollup 
----------------
- 
-(1 row)
-
 insert into testfloat (num) values (null);
 select * from testfloat_rollup1;
- count(num) | avg(num) | var_pop(num) | var_samp(num) | variance(num) | stddev(num) | stddev_pop(num) | stddev_samp(num) 
-------------+----------+--------------+---------------+---------------+-------------+-----------------+------------------
-          0 |          |              |               |               |             |                 |                 
+ count | avg | var_pop | var_samp | variance | stddev | stddev_pop | stddev_samp 
+-------+-----+---------+----------+----------+--------+------------+-------------
+     0 |     |         |          |          |        |            |            
 (1 row)
 
 select * from testfloat_rollup1_groundtruth;
- count(num) | avg(num) | var_pop(num) | var_samp(num) | variance(num) | stddev(num) | stddev_pop(num) | stddev_samp(num) 
-------------+----------+--------------+---------------+---------------+-------------+-----------------+------------------
-          0 |          |              |               |               |             |                 |                 
+ count | avg | var_pop | var_samp | variance | stddev | stddev_pop | stddev_samp 
+-------+-----+---------+----------+----------+--------+------------+-------------
+     0 |     |         |          |          |        |            |            
 (1 row)
 
 insert into testfloat (num) values (1);
 select * from testfloat_rollup1;
- count(num) | avg(num) | var_pop(num) | var_samp(num) | variance(num) | stddev(num) | stddev_pop(num) | stddev_samp(num) 
-------------+----------+--------------+---------------+---------------+-------------+-----------------+------------------
-          1 |        1 |            0 |             0 |             0 |             |               0 |                 
+ count | avg | var_pop | var_samp | variance | stddev | stddev_pop | stddev_samp 
+-------+-----+---------+----------+----------+--------+------------+-------------
+     1 |   1 |       0 |        0 |        0 |        |          0 |            
 (1 row)
 
 select * from testfloat_rollup1_groundtruth;
- count(num) |        avg(num)        | var_pop(num) | var_samp(num) | variance(num) | stddev(num) | stddev_pop(num) | stddev_samp(num) 
-------------+------------------------+--------------+---------------+---------------+-------------+-----------------+------------------
-          1 | 1.00000000000000000000 |            0 |             0 |             0 |             |               0 |                 
+ count |          avg           | var_pop | var_samp | variance | stddev | stddev_pop | stddev_samp 
+-------+------------------------+---------+----------+----------+--------+------------+-------------
+     1 | 1.00000000000000000000 |       0 |        0 |        0 |        |          0 |            
 (1 row)
 
 insert into testfloat (num) values (2);
 select * from testfloat_rollup1;
- count(num) | avg(num) | var_pop(num) | var_samp(num) | variance(num) |    stddev(num)     | stddev_pop(num) |  stddev_samp(num)  
-------------+----------+--------------+---------------+---------------+--------------------+-----------------+--------------------
-          2 |      1.5 |         0.25 |           0.5 |           0.5 | 0.7071067811865476 |             0.5 | 0.7071067811865476
+ count | avg | var_pop | var_samp | variance |       stddev       | stddev_pop |    stddev_samp     
+-------+-----+---------+----------+----------+--------------------+------------+--------------------
+     2 | 1.5 |    0.25 |      0.5 |      0.5 | 0.7071067811865476 |        0.5 | 0.7071067811865476
 (1 row)
 
 select * from testfloat_rollup1_groundtruth;
- count(num) |      avg(num)      |      var_pop(num)      |     var_samp(num)      |     variance(num)      |      stddev(num)       |    stddev_pop(num)     |    stddev_samp(num)    
-------------+--------------------+------------------------+------------------------+------------------------+------------------------+------------------------+------------------------
-          2 | 1.5000000000000000 | 0.25000000000000000000 | 0.50000000000000000000 | 0.50000000000000000000 | 0.70710678118654752440 | 0.50000000000000000000 | 0.70710678118654752440
+ count |        avg         |        var_pop         |        var_samp        |        variance        |         stddev         |       stddev_pop       |      stddev_samp       
+-------+--------------------+------------------------+------------------------+------------------------+------------------------+------------------------+------------------------
+     2 | 1.5000000000000000 | 0.25000000000000000000 | 0.50000000000000000000 | 0.50000000000000000000 | 0.70710678118654752440 | 0.50000000000000000000 | 0.70710678118654752440
 (1 row)
 
 insert into testfloat (num) values (2);
 select * from testfloat_rollup1;
- count(num) |      avg(num)      |    var_pop(num)     |    var_samp(num)    |    variance(num)    |    stddev(num)     |  stddev_pop(num)   |  stddev_samp(num)  
-------------+--------------------+---------------------+---------------------+---------------------+--------------------+--------------------+--------------------
-          3 | 1.6666666666666665 | 0.22222222222222224 | 0.33333333333333337 | 0.33333333333333337 | 0.5773502691896258 | 0.4714045207910317 | 0.5773502691896258
+ count |        avg         |       var_pop       |      var_samp       |      variance       |       stddev       |     stddev_pop     |    stddev_samp     
+-------+--------------------+---------------------+---------------------+---------------------+--------------------+--------------------+--------------------
+     3 | 1.6666666666666665 | 0.22222222222222224 | 0.33333333333333337 | 0.33333333333333337 | 0.5773502691896258 | 0.4714045207910317 | 0.5773502691896258
 (1 row)
 
 select * from testfloat_rollup1_groundtruth;
- count(num) |      avg(num)      |      var_pop(num)      |     var_samp(num)      |     variance(num)      |      stddev(num)       |    stddev_pop(num)     |    stddev_samp(num)    
-------------+--------------------+------------------------+------------------------+------------------------+------------------------+------------------------+------------------------
-          3 | 1.6666666666666667 | 0.22222222222222222222 | 0.33333333333333333333 | 0.33333333333333333333 | 0.57735026918962576451 | 0.47140452079103168293 | 0.57735026918962576451
+ count |        avg         |        var_pop         |        var_samp        |        variance        |         stddev         |       stddev_pop       |      stddev_samp       
+-------+--------------------+------------------------+------------------------+------------------------+------------------------+------------------------+------------------------
+     3 | 1.6666666666666667 | 0.22222222222222222222 | 0.33333333333333333333 | 0.33333333333333333333 | 0.57735026918962576451 | 0.47140452079103168293 | 0.57735026918962576451
 (1 row)
 
 insert into testfloat (num) values (2);
 select * from testfloat_rollup1;
- count(num) | avg(num) |    var_pop(num)     |    var_samp(num)    |    variance(num)    | stddev(num) |   stddev_pop(num)   | stddev_samp(num) 
-------------+----------+---------------------+---------------------+---------------------+-------------+---------------------+------------------
-          4 |     1.75 | 0.18750000000000003 | 0.25000000000000006 | 0.25000000000000006 |         0.5 | 0.43301270189221935 |              0.5
+ count | avg  |       var_pop       |      var_samp       |      variance       | stddev |     stddev_pop      | stddev_samp 
+-------+------+---------------------+---------------------+---------------------+--------+---------------------+-------------
+     4 | 1.75 | 0.18750000000000003 | 0.25000000000000006 | 0.25000000000000006 |    0.5 | 0.43301270189221935 |         0.5
 (1 row)
 
 select * from testfloat_rollup1_groundtruth;
- count(num) |      avg(num)      |      var_pop(num)      |     var_samp(num)      |     variance(num)      |      stddev(num)       |    stddev_pop(num)     |    stddev_samp(num)    
-------------+--------------------+------------------------+------------------------+------------------------+------------------------+------------------------+------------------------
-          4 | 1.7500000000000000 | 0.18750000000000000000 | 0.25000000000000000000 | 0.25000000000000000000 | 0.50000000000000000000 | 0.43301270189221932338 | 0.50000000000000000000
+ count |        avg         |        var_pop         |        var_samp        |        variance        |         stddev         |       stddev_pop       |      stddev_samp       
+-------+--------------------+------------------------+------------------------+------------------------+------------------------+------------------------+------------------------
+     4 | 1.7500000000000000 | 0.18750000000000000000 | 0.25000000000000000000 | 0.25000000000000000000 | 0.50000000000000000000 | 0.43301270189221932338 | 0.50000000000000000000
 (1 row)
 
 select assert_rollup_relative_error('testfloat_rollup1', 1e-12);
@@ -158,3 +151,4 @@ select assert_rollup_relative_error('testfloat_rollup1', 1e-12);
 (1 row)
 
 --select 'testfloat_rollup1',* from testfloat_rollup1 union select 'testfloat_rollup1_groundtruth',* from testfloat_rollup1_groundtruth;
+drop table testfloat cascade;

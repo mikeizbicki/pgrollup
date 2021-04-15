@@ -4,7 +4,7 @@ create extension if not exists hll;
 drop extension pg_rollup;
 create extension if not exists pg_rollup;
 
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
@@ -38,20 +38,22 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name',
-    rollups => 'hll(num)'
+CREATE MATERIALIZED VIEW test_rollup1 AS (
+    SELECT
+        name,
+        round(hll_cardinality(hll_add_agg(hll_hash_text(name)))) AS distinct_name,
+        round(hll_cardinality(hll_add_agg(hll_hash_integer(num)))) AS distinct_num
+    FROM test
+    GROUP BY name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup2',
-    rollups => $$
-        hll(name),
-        hll(num)
-    $$
+CREATE MATERIALIZED VIEW test_rollup2 AS (
+    SELECT
+        name,
+        hll_count(name) AS distinct_name,
+        hll_count(num)  AS distinct_num
+    FROM test
+    GROUP BY name
 );
 
 select assert_rollup('test_rollup1');
@@ -88,3 +90,8 @@ insert into test (name,num) values
 
 select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup2');
+
+select * from test_rollup1;
+select * from test_rollup2;
+
+drop table test cascade;

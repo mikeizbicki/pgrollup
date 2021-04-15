@@ -20,7 +20,7 @@ BEGIN
 END;
 $$;
 
-create temporary table arrtest (
+create table arrtest (
     id serial primary key,
     a int,
     b int[],
@@ -45,61 +45,58 @@ insert into arrtest (a,b,c,d) values
     (2, NULL              , 'foo', '{NULL,NULL     }'),
     (3, NULL              , 'foo', NULL              );
 
-select create_rollup(
-    'arrtest',
-    'arrtest_rollup0',
-    wheres => $$
-        unnest(b)
-    $$
+create materialized view arrtest_rollup0 as (
+    select
+        count(*),
+        unnest(arrtest.b) as b
+    from arrtest
+    group by b
 );
 
-select create_rollup(
-    'arrtest',
-    'arrtest_rollup1',
-    wheres => $$
-        unnest(array_uniq(b))
-    $$
+create materialized view arrtest_rollup1 as (
+    select 
+        count(*),
+        unnest(array_uniq(b)) as b
+    from arrtest
+    group by b
 );
 
-select create_rollup(
-    'arrtest',
-    'arrtest_rollup2',
-    wheres => $$
+create materialized view arrtest_rollup2 as (
+    select
+        count(*),
         unnest(array_uniq(d))
-    $$
+    from arrtest
+    group by unnest
 );
 
-select create_rollup(
-    'arrtest',
-    'arrtest_rollup3',
-    wheres => $$
+create materialized view arrtest_rollup3 as (
+    select 
+        count(*),
         unnest(array_uniq(b)) AS b,
         unnest(array_uniq(d)) AS d
-    $$
+    from arrtest
+    group by b,d
 );
 
-select create_rollup(
-    'arrtest',
-    'arrtest_rollup4',
-    wheres => $$
+create materialized view arrtest_rollup4 as (
+    select 
         a,
         unnest(array_uniq(b)) AS b,
         unnest(array_uniq(d)) AS d,
-        c
-    $$
+        c,
+        count(*)
+    from arrtest
+    group by a,b,c,d
 );
 
-select create_rollup(
-    'arrtest',
-    'arrtest_rollup5',
-    wheres => $$
+create materialized view arrtest_rollup5 as (
+    select 
         unnest(array_uniq(b)) AS b,
-        unnest(array_uniq(d)) AS d
-    $$,
-    rollups => $$
-        hll(a),
-        hll(c)
-    $$
+        unnest(array_uniq(d)) AS d,
+        count(a) as count_a,
+        count(c) as count_b
+    from arrtest
+    group by b,d
 );
 
 insert into arrtest (a,b,c,d) values
@@ -126,3 +123,5 @@ select assert_rollup('arrtest_rollup2');
 select assert_rollup('arrtest_rollup3');
 select assert_rollup('arrtest_rollup4');
 select assert_rollup('arrtest_rollup5');
+
+drop table arrtest cascade;

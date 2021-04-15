@@ -130,14 +130,13 @@ IF has_extension THEN
 INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
-    ('topn'
+    ('topn_add_agg'
     ,'topn_add_agg(x)'
     ,'JSONB'
     ,$$'{}'$$
-    ,'topn_union(topn(x),topn(y))'
+    ,'topn_union(topn_add_agg(x),topn_add_agg(y))'
     ,NULL
-    --,'topn(topn(x),1)'
-    ,'topn(x)'
+    ,'x'
     );
 
 END IF;
@@ -157,14 +156,32 @@ IF has_extension THEN
 INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
-    ('hll'
+    ('hll_add_agg'
+    ,'hll_add_agg(x)'
+    ,'hll'
+    ,'hll_empty()'
+    ,'hll_add_agg(x)||hll_add_agg(y)'
+    ,NULL
+    ,'x'
+    ),
+    ('hll_count'
     ,'hll_add_agg(hll_hash_any(x))'
     ,'hll'
     ,'hll_empty()'
-    ,'hll(x)||hll(y)'
+    ,'hll_count(x)||hll_count(y)'
     ,NULL
-    ,'round(hll_cardinality(hll(x)))'
+    ,'round(hll_cardinality(hll_count(x)))'
     );
+
+
+CREATE FUNCTION hll_count_sfunc(a hll, b anyelement) RETURNS hll AS $$ SELECT hll_add(a, hll_hash_any(b)); $$ LANGUAGE SQL;
+CREATE FUNCTION hll_count_final(a hll) RETURNS BIGINT AS $$ SELECT round(hll_cardinality(a)); $$ LANGUAGE SQL;
+CREATE AGGREGATE hll_count (anyelement)
+(
+    sfunc = hll_count_sfunc,
+    stype = hll,
+    finalfunc = hll_cardinality
+);
 
 END IF;
 END
@@ -192,23 +209,25 @@ $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
-    ('kll_float_sketch'
+    ('kll_float_sketch_build'
     ,'kll_float_sketch_build(x)'
     ,'kll_float_sketch'
     ,'null'
-    ,'kll_float_sketch_union(kll_float_sketch(x),kll_float_sketch(y))'
+    ,'kll_float_sketch_union(kll_float_sketch_build(x),kll_float_sketch_build(y))'
     ,NULL
-    ,'kll_float_sketch_get_quantile(kll_float_sketch(x),0.5)'
+    ,'x'
+    --,'kll_float_sketch_get_quantile(kll_float_sketch(x),0.5)'
     ),
-    ('frequent_strings_sketch'
-    ,'frequent_strings_sketch_build(9,x)'
+    ('frequent_strings_sketch_build'
+    ,'frequent_strings_sketch_build(x)'
     ,'frequent_strings_sketch'
     ,'null'
-    ,'frequent_strings_sketch_union(frequent_strings_sketch(x),frequent_strings_sketch(y))'
+    ,'frequent_strings_sketch_union(frequent_strings_sketch_build(x),frequent_strings_sketch_build(y))'
     ,NULL
-    ,'frequent_strings_sketch_result_no_false_negatives(frequent_strings_sketch(x))'
-    --,$$'to view, apply frequent_strings_sketch_result_no_false_negatives(x) to the _raw rollup table'$$
+    ,'x'
+    --,'frequent_strings_sketch_result_no_false_negatives(frequent_strings_sketch(x))'
     );
+    
 
     /*
     -- FIXME: plus doesn't throw an error, but gives really bad results, possibly due to an uncaught error
@@ -259,16 +278,23 @@ CREATE OR REPLACE FUNCTION tdigest_union(a tdigest, b tdigest) RETURNS tdigest A
     select tdigest(sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION tdigest_getpercentile(a tdigest, p float) RETURNS double precision AS $$
+    select tdigest_percentile(sketch, p) from (select a as sketch) t;
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+
+-- FIXME:
+-- we should be able to get rid of the tdigest_getpercentile function;
+-- but this would require adjusting the algebra code to parse the parameters
 INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
     ('tdigest'
-    ,'tdigest(x,100)'
+    ,'tdigest(x)'
     ,'tdigest'
-    ,'null' --,'tdigest(null,100)'
+    ,'null'
     ,'tdigest_union(tdigest(x),tdigest(y))'
     ,NULL
-    ,'tdigest_percentile(tdigest(x),0.5)'
+    ,'x'
     );
 
 END IF;
@@ -304,7 +330,7 @@ INSERT INTO pg_rollup_settings (name,value) VALUES
  * FIXME:
  * This trigger doesn't seem to fire when a temporary table is automatically dropped at the end of a session.
  */
-CREATE OR REPLACE FUNCTION pg_rollup_drop_function()
+CREATE OR REPLACE FUNCTION pg_rollup_event_drop_f()
 RETURNS event_trigger AS $$
 DECLARE
     obj record;
@@ -322,8 +348,28 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
-CREATE EVENT TRIGGER pg_rollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pg_rollup_drop_function();
+CREATE EVENT TRIGGER pg_rollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pg_rollup_event_drop_f();
 
+
+/*
+ * Whenever a materialized view is created, we should replace it with a rollup.
+ */
+CREATE OR REPLACE FUNCTION pgrollup_event_convert_f()
+RETURNS event_trigger AS $$
+DECLARE
+    obj record;
+    rollup record;
+BEGIN
+    IF tg_tag='CREATE MATERIALIZED VIEW'
+    THEN
+        FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
+        LOOP
+            PERFORM pgrollup_convert(obj.object_identity);
+        END LOOP;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+CREATE EVENT TRIGGER pgrollup_event_convert ON ddl_command_end EXECUTE PROCEDURE pgrollup_event_convert_f();
 
 /*
  * Manual rollup functions modified from
@@ -489,7 +535,7 @@ END;
 $function$;
 
 
-CREATE OR REPLACE FUNCTION pgrollup_manage_all(
+CREATE OR REPLACE FUNCTION pgrollup_convert_all(
     dry_run BOOLEAN DEFAULT FALSE,
     mode TEXT DEFAULT NULL
 )
@@ -501,13 +547,14 @@ RETURNS VOID AS $$
     rows = plpy.execute(sql)
     for row in rows:
         sql="""
-        SELECT pgrollup_manage('"""+row['matviewname']+"',"+str(dry_run)+","+('NULL' if not mode else mode)+""");
+        SELECT pgrollup_convert('"""+row['matviewname']+"',"+str(dry_run)+","+('NULL' if not mode else mode)+""");
         """
         plpy.execute(sql)
 $$
 LANGUAGE plpython3u;
 
-CREATE OR REPLACE FUNCTION pgrollup_manage(
+
+CREATE OR REPLACE FUNCTION pgrollup_convert(
     view_name REGCLASS,
     dry_run BOOLEAN DEFAULT FALSE,
     mode TEXT DEFAULT NULL
@@ -521,12 +568,13 @@ RETURNS VOID AS $$
     #rows = plpy.execute(sql)
     #view_definition = rows[0]['view_definition']
     sql="""
-    SELECT definition
+    SELECT definition,tablespace
     FROM pg_matviews
     WHERE matviewname='"""+view_name+"""';
     """
     rows = plpy.execute(sql)
     view_definition = rows[0]['definition']
+    tablespace = rows[0]['tablespace']
 
     if not dry_run:
         sql = """
@@ -540,21 +588,23 @@ RETURNS VOID AS $$
     );
     """
     plpy.notice('query=\n'+query)
-    sql = """
-    SELECT pgrollup($pgrollup$
-    """+query+"""
-    $pgrollup$,"""+str(dry_run)+","+('NULL' if not mode else mode)+""")
-    """
+    sql = ("""
+    SELECT pgrollup_parse("""
+        +"""$pgrollup_parse$"""+query+"""$pgrollup_parse$,"""
+        +str(dry_run)+","
+        +('NULL' if not mode else "'"+mode+"'")+","
+        +('NULL' if not tablespace else "'"+tablespace+"'")
+    +""")""")
     plpy.execute(sql)
 $$
 LANGUAGE plpython3u;
 
 
-
-CREATE OR REPLACE FUNCTION pgrollup(
+CREATE OR REPLACE FUNCTION pgrollup_parse(
     text TEXT,
     dry_run BOOLEAN DEFAULT FALSE,
-    mode TEXT DEFAULT NULL
+    mode TEXT DEFAULT NULL,
+    tablespace TEXT DEFAULT NULL
 )
 RETURNS VOID AS $$
     import pg_rollup.parsing
@@ -569,7 +619,8 @@ RETURNS VOID AS $$
             where_clause => $5,
             having_clause => $6,
             dry_run => $7,
-            mode => $8
+            mode => $8,
+            tablespace => $9
         ) as result;'''
         plan = plpy.prepare(sql,[
             'text',
@@ -579,6 +630,7 @@ RETURNS VOID AS $$
             'text',
             'text',
             'boolean',
+            'text',
             'text',
             ])
         result = plpy.execute(plan,[
@@ -590,6 +642,7 @@ RETURNS VOID AS $$
             cmd['having_clause'],
             dry_run,
             mode,
+            tablespace
             ])
 
 $$
@@ -673,7 +726,15 @@ RETURNS TEXT AS $$
     # columns_view_list contains the columns that will be included in the created view
     columns_view_list = []
     raw_columns = []
-    for value,name in [ column for column in columns if column not in groups ]:
+    columns_minus_groups = []
+    for value,name in columns:
+        value_groups = [ value for value,name in groups]
+        name_groups = [ name for value,name in groups]
+        name_groups += [ joininfos[0]['table_name']+'.'+name for value,name in groups ]
+        if '('+value+')' not in value_groups and value not in value_groups and name not in name_groups and joininfos[0]['table_name']+'.'+name not in value_groups and joininfos[0]['table_name']+'.'+name not in name_groups:
+            columns_minus_groups.append((value,name))
+
+    for value,name in columns_minus_groups:
         value_substitute_views = pg_rollup.parsing_functions.substitute_views(value, all_algebras)
         deps, value_view = pg_rollup.parsing_functions.extract_algebras(value_substitute_views, all_algebras)
         columns_view_list.append(pg_rollup.ViewKey(value_view,name))
@@ -686,6 +747,7 @@ RETURNS TEXT AS $$
     for value in raw_columns:
         # extract key info
         name = '"'+value+'"'
+
         algebra = value[:value.find("(")]
         expr = value[value.find("(")+1:value.rfind(")")]
         type = get_type(expr)
@@ -812,93 +874,6 @@ RETURNS TEXT AS $$
         plpy.notice('the given command would execute the following SQL code:\n\n'+sqls)
 $$
 LANGUAGE plpython3u;
-
-CREATE OR REPLACE FUNCTION create_rollup(
-    table_name  REGCLASS,
-    rollup_name TEXT,
-    tablespace TEXT DEFAULT NULL,
-    wheres TEXT DEFAULT '',
-    rollups TEXT DEFAULT 'count(*) AS count',
-    key TEXT DEFAULT NULL,
-    mode TEXT DEFAULT NULL
-    )
-RETURNS VOID AS $$
-    import pg_rollup
-    import json
-
-    global table_name
-
-    wheres_list = pg_rollup._extract_arguments(wheres)
-    if len(wheres_list)==1 and wheres_list[0].strip()=='':
-        wheres_list=[]
-
-    groups_list = []
-    for group in wheres_list:
-        group = group.strip()
-        if 'AS' in group:
-            value,name = group.split('AS')
-            value = value.strip()
-            name = name.strip()
-        elif 'as' in group:
-            value,name = group.split('as')
-            value = value.strip()
-            name = name.strip()
-        else:
-            value = group
-            name = group.replace('(','_').replace(')','_').replace('*','_')
-        groups_list.append([value,name])
-
-    rollups_list = pg_rollup._extract_arguments(rollups)
-    if len(rollups_list)==1 and rollups_list[0].strip()=='':
-        rollups_list=[]
-
-    columns_list = []
-    for column in rollups_list:
-        column = column.strip()
-        if 'AS' in column:
-            value,name = column.split('AS')
-            value = value.strip()
-            name = name.strip()
-        elif 'as' in column:
-            value,name = column.split('as')
-            value = value.strip()
-            name = name.strip()
-        else:
-            value = column
-            name = '"' + value + '"'
-        columns_list.append([value,name])
-
-    sql = f'''SELECT create_rollup_internal(
-        $1,
-        joininfos => $2,
-        columns => $3,
-        groups => $4,
-        tablespace => $5,
-        mode => $6
-    );'''
-    plan = plpy.prepare(sql,[
-        'text',
-        'JSON',
-        'text[]',
-        'text[]',
-        'text',
-        'text'
-        ])
-    plpy.execute(plan, [
-        rollup_name,
-        json.dumps([{
-            'table_name':table_name,
-            'table_alias':table_name,
-            'condition':'',
-            'join_type':'FROM',
-            'rollup_column':key,
-            }]),
-        columns_list,
-        groups_list,
-        tablespace,
-        mode
-        ])
-$$ language plpython3u;
 
 
 CREATE OR REPLACE FUNCTION rollup_mode(

@@ -20,6 +20,24 @@ example_algebras = [
         'negate':'-x',
         'view':'sum(x)',
     },
+    { 
+        'name':'hll_add_agg',
+        'agg':'hll_add_agg(x)',
+        'type':'hll',
+        'zero':'hll_empty()',
+        'plus':'hll_add_agg(x)||hll_add_agg(y)',
+        'negate':None,
+        'view':'x',
+    },
+    { 
+        'name':'hll_count',
+        'agg':'hll_add_agg(hll_hash_any(x))',
+        'type':'hll',
+        'zero':'hll_empty()',
+        'plus':'hll_count(x)||hll_count(y)',
+        'negate':None,
+        'view':'round(hll_cardinality(hll_count(x)))',
+    }
     ]
 
 
@@ -35,9 +53,13 @@ def substitute_views(text, algebras=example_algebras):
     'f(x)-count(*)'
     >>> substitute_views('f(x) - sum(f(y))')
     'f(x) - sum(f(y))'
+    >>> substitute_views('round(hll_cardinality(hll_add_agg(hll_hash_any(name))))')
+    'round(hll_cardinality(hll_add_agg(hll_hash_any(name))))'
+    >>> substitute_views('round(hll_cardinality(hll_add_agg(hll_hash_any(test.num))))')
+    'round(hll_cardinality(hll_add_agg(hll_hash_any(test.num))))'
     '''
     for algebra in algebras:
-        matches = re.finditer(r'([^"]|^)('+algebra['name']+')\(', text)
+        matches = re.finditer(r'([^"a-zA-Z_0-9]|^)('+algebra['name']+')\(', text)
         new_text = ''
         last_text_index = 0
         for match in matches:
@@ -67,17 +89,24 @@ def extract_algebras(text, algebras=example_algebras):
     '"count(*)"-"sum(num)"'
     >>> extract_algebras('count(*)')[1]
     '"count(*)"'
+    >>> extract_algebras('hll_count(*)')[1]
+    '"hll_count(*)"'
+    >>> extract_algebras('hll_count(*)')[1]
+    '"hll_count(*)"'
     >>> extract_algebras('count(*)+count(*)+count(*)')[1]
     '"count(*)"+"count(*)"+"count(*)"'
     >>> extract_algebras('f(x)-count(*)')[1]
     'f(x)-"count(*)"'
     >>> extract_algebras('f(x) - sum(f(y))')[1]
     'f(x) - "sum(f(y))"'
-    >>> extract_algebras('hll(num)')
+    >>> extract_algebras('round(hll_cardinality(hll_add_agg(hll_hash_any(test.name))))')[1]
+    'round(hll_cardinality("hll_add_agg(hll_hash_any(test.name))"))'
+    >>> extract_algebras('round(hll_cardinality(hll_add_agg(hll_hash_any(test.name))))')[0]
+    {'hll_add_agg(hll_hash_any(test.name))'}
     '''
     dependencies = set()
     for algebra in algebras:
-        matches = re.finditer(r'([^"]|^)('+algebra['name']+')\(', text)
+        matches = re.finditer(r'([^"a-zA-Z_0-9]|^)('+algebra['name']+')\(', text)
         new_text = ''
         last_text_index = 0
         for match in matches:

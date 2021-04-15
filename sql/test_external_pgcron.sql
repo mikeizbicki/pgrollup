@@ -3,7 +3,7 @@ create or replace language plpython3u;
 create extension if not exists pg_rollup;
 create extension if not exists pg_cron;
 
-create temporary table test_cron (
+create table test_cron (
     id serial primary key,
     name text,
     num int
@@ -39,36 +39,40 @@ insert into test_cron (name,num) values
 
 UPDATE pg_rollup_settings SET value='cron' WHERE name='default_mode';
 
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup1',
-    wheres => 'name',
-    key => 'id'
+CREATE MATERIALIZED VIEW test_cron_rollup1 AS (
+    SELECT 
+        name,
+        count(*)
+    FROM test_cron
+    GROUP BY name
 );
 
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup2',
-    wheres => 'name,num',
-    key => 'id'
+CREATE MATERIALIZED VIEW test_cron_rollup2 AS (
+    SELECT 
+        name,
+        num,
+        count(*)
+    FROM test_cron
+    GROUP BY name,num
 );
 
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup3',
-    wheres => 'name',
-    rollups => 'hll(num)',
-    key => 'id',
-    mode => 'trigger'
+CREATE MATERIALIZED VIEW test_cron_rollup3 AS (
+    SELECT 
+        name,
+        sum(num)
+    FROM test_cron
+    GROUP BY name
 );
+SELECT rollup_mode('test_cron_rollup3','trigger');
 
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup4',
-    rollups => 'hll(name),hll(num)',
-    key => 'id',
-    mode => 'cron'
+CREATE MATERIALIZED VIEW test_cron_rollup4 AS (
+    SELECT 
+        name,
+        sum(num)
+    FROM test_cron
+    GROUP BY name
 );
+SELECT rollup_mode('test_cron_rollup4','cron');
 
 insert into test_cron (name,num) values
     ('alice', 1),
@@ -102,6 +106,8 @@ insert into test_cron (name,num) values
 -- therefore, the rollup commands will not get executed and the tables will be out of date;
 -- to test_cron the cron mode, therefore, we will inspect the output of the cron job list
 -- and verify that all jobs that should be added have been added
-select * from cron.job;
+SELECT * FROM cron.job;
 
 UPDATE pg_rollup_settings SET value='trigger' WHERE name='default_mode';
+
+DROP TABLE test_cron CASCADE;

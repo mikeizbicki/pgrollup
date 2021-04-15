@@ -4,7 +4,7 @@ create extension if not exists topn;
 drop extension pg_rollup;
 create extension if not exists pg_rollup;
 
-create temporary table test_topn (
+create table test_topn (
     id serial primary key,
     name text,
     num int
@@ -38,13 +38,12 @@ insert into test_topn (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup(
-    'test_topn',
-    'test_topn_rollup1',
-    wheres => 'num',
-    rollups => $$
-        topn(name)
-    $$
+CREATE MATERIALIZED VIEW test_topn_rollup1 AS (
+    SELECT
+        topn(topn_add_agg(name),1) AS top1,
+        topn(topn_add_agg(name),2) AS top2,
+        topn(topn_add_agg(name),3) AS top3
+    FROM test_topn
 );
 
 select assert_rollup('test_topn_rollup1');
@@ -79,3 +78,7 @@ insert into test_topn (name,num) values
 
 
 select assert_rollup('test_topn_rollup1');
+
+select * from test_topn_rollup1;
+
+drop table test_topn cascade;

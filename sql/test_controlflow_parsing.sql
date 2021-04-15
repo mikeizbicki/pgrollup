@@ -115,8 +115,6 @@ CREATE MATERIALIZED VIEW testparsing_rollup9 AS (
         num in (1, 2, 3)
 ) WITH NO DATA;
 
-select pgrollup_manage_all();
-
 select * from testparsing_rollup9;
 
 select assert_rollup('testparsing_rollup1');

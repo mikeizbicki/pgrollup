@@ -2,7 +2,7 @@ SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists pg_rollup;
 
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
@@ -36,18 +36,21 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name'
+CREATE MATERIALIZED VIEW test_rollup1 AS (
+    SELECT 
+        name,
+        count(*)
+    FROM test
+    GROUP BY name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup2',
-    wheres => 'name,num'
+CREATE MATERIALIZED VIEW test_rollup2 AS (
+    SELECT 
+        name,
+        count(*)
+    FROM test
+    GROUP BY name,num
 );
-
 
 select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup2');
