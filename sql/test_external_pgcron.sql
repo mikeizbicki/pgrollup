@@ -1,6 +1,6 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 create extension if not exists pg_cron;
 
 create table test_cron (
@@ -37,7 +37,7 @@ insert into test_cron (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-UPDATE pg_rollup_settings SET value='cron' WHERE name='default_mode';
+UPDATE pgrollup_settings SET value='cron' WHERE name='default_mode';
 
 CREATE MATERIALIZED VIEW test_cron_rollup1 AS (
     SELECT 
@@ -108,6 +108,6 @@ insert into test_cron (name,num) values
 -- and verify that all jobs that should be added have been added
 SELECT * FROM cron.job;
 
-UPDATE pg_rollup_settings SET value='trigger' WHERE name='default_mode';
+UPDATE pgrollup_settings SET value='trigger' WHERE name='default_mode';
 
 DROP TABLE test_cron CASCADE;

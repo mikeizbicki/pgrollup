@@ -1,8 +1,8 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
 create extension if not exists datasketches;
-drop extension pg_rollup;
-create extension if not exists pg_rollup;
+drop extension pgrollup;
+create extension if not exists pgrollup;
 create table dstest (
     id serial primary key,
     a int,

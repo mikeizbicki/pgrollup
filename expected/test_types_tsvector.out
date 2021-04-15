@@ -1,6 +1,6 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 create table messages (
     id serial primary key,
     id_user integer,

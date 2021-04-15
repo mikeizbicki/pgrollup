@@ -6,7 +6,7 @@ SET client_min_messages TO WARNING;
  * it doesn't test more exotic types, but hopefully that's not necessary
  */
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 create table nulltest (
     id serial primary key,
     name text,

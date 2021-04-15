@@ -1,4 +1,4 @@
-\echo Use "CREATE EXTENSION pg_rollup" to load this file. \quit
+\echo Use "CREATE EXTENSION pgrollup" to load this file. \quit
 
 --------------------------------------------------------------------------------
 
@@ -104,7 +104,7 @@ INSERT INTO algebra
  * Algebras defined in external libraries goes here.
  * For each library, we first check if the extension is installed.
  * Then, we only define the library specific code if the extension actually is installed.
- * This ensures that the pg_rollup library can work even when these optional dependencies are not met.
+ * This ensures that the pgrollup library can work even when these optional dependencies are not met.
  *
  * NOTE:
  * The following libraries have not been included as dependencies for this project,
@@ -315,11 +315,11 @@ CREATE TABLE pgrollup_rollups (
     PRIMARY KEY (rollup_name,table_alias)
 );
 
-CREATE TABLE pg_rollup_settings (
+CREATE TABLE pgrollup_settings (
     name TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO pg_rollup_settings (name,value) VALUES
+INSERT INTO pgrollup_settings (name,value) VALUES
     ('default_mode','trigger');
 
 /*
@@ -330,7 +330,7 @@ INSERT INTO pg_rollup_settings (name,value) VALUES
  * FIXME:
  * This trigger doesn't seem to fire when a temporary table is automatically dropped at the end of a session.
  */
-CREATE OR REPLACE FUNCTION pg_rollup_event_drop_f()
+CREATE OR REPLACE FUNCTION pgrollup_event_drop_f()
 RETURNS event_trigger AS $$
 DECLARE
     obj record;
@@ -348,7 +348,7 @@ BEGIN
     END IF;
 END;
 $$ LANGUAGE plpgsql;
-CREATE EVENT TRIGGER pg_rollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pg_rollup_event_drop_f();
+CREATE EVENT TRIGGER pgrollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pgrollup_event_drop_f();
 
 
 /*
@@ -607,8 +607,8 @@ CREATE OR REPLACE FUNCTION pgrollup_parse(
     tablespace TEXT DEFAULT NULL
 )
 RETURNS VOID AS $$
-    import pg_rollup.parsing
-    cmds = pg_rollup.parsing.parse_create(text)
+    import pgrollup.parsing
+    cmds = pgrollup.parsing.parse_create(text)
     for cmd in cmds:
         sql = f'''
         SELECT create_rollup_internal(
@@ -661,8 +661,8 @@ CREATE OR REPLACE FUNCTION create_rollup_internal(
     dry_run BOOLEAN DEFAULT FALSE
     )
 RETURNS TEXT AS $$
-    import pg_rollup
-    import pg_rollup.parsing_functions
+    import pgrollup
+    import pgrollup.parsing_functions
     import re
     import collections
     import json
@@ -702,7 +702,7 @@ RETURNS TEXT AS $$
     # if no mode provided, calculate the default mode
     global mode
     if mode is None:
-        mode = plpy.execute("select value from pg_rollup_settings where name='default_mode';")[0]['value'];
+        mode = plpy.execute("select value from pgrollup_settings where name='default_mode';")[0]['value'];
         if mode is None:
             mode = 'trigger'
 
@@ -721,7 +721,7 @@ RETURNS TEXT AS $$
 
     groups_list = []
     for value,name in groups:
-        groups_list.append(pg_rollup.Key(value,get_type(value),name,None))
+        groups_list.append(pgrollup.Key(value,get_type(value),name,None))
 
     # columns_view_list contains the columns that will be included in the created view
     columns_view_list = []
@@ -735,9 +735,9 @@ RETURNS TEXT AS $$
             columns_minus_groups.append((value,name))
 
     for value,name in columns_minus_groups:
-        value_substitute_views = pg_rollup.parsing_functions.substitute_views(value, all_algebras)
-        deps, value_view = pg_rollup.parsing_functions.extract_algebras(value_substitute_views, all_algebras)
-        columns_view_list.append(pg_rollup.ViewKey(value_view,name))
+        value_substitute_views = pgrollup.parsing_functions.substitute_views(value, all_algebras)
+        deps, value_view = pgrollup.parsing_functions.extract_algebras(value_substitute_views, all_algebras)
+        columns_view_list.append(pgrollup.ViewKey(value_view,name))
         for dep in deps:
             raw_columns.append(dep)
 
@@ -757,7 +757,7 @@ RETURNS TEXT AS $$
         res = list(plpy.execute(sql))
         if len(res)==1:
             algebra_dictionary = res[0]
-            key = pg_rollup.Key(expr,type,name,algebra_dictionary)
+            key = pgrollup.Key(expr,type,name,algebra_dictionary)
         else:
             plpy.error(f'algbera {algebra} not found in the algebra table')
 
@@ -846,7 +846,7 @@ RETURNS TEXT AS $$
 
     # constuct the sql statements for generating the rollup, and execute them
     # the error checking above should guarantee that there are no SQL errors below
-    sqls = pg_rollup.Rollup(
+    sqls = pgrollup.Rollup(
         joininfos,
         is_temp,
         tablespace_name,
@@ -885,8 +885,8 @@ RETURNS VOID AS $func$
     sql = (f"select * from pgrollup_rollups where rollup_name='{rollup_name}'")
     rows = list(plpy.execute(sql))
 
-    for pg_rollup in rows:
-        if mode != 'trigger' and pg_rollup['event_id_sequence_name'] is None:
+    for pgrollup in rows:
+        if mode != 'trigger' and pgrollup['event_id_sequence_name'] is None:
             plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
 
         ########################################    
@@ -897,22 +897,22 @@ RETURNS VOID AS $func$
         # this requires calling the do_rollup function for all non-trigger options,
         # which is potentially an expensive operation.
         ########################################    
-        if pg_rollup['mode'] == 'trigger':
+        if pgrollup['mode'] == 'trigger':
             plpy.execute(f'''
-                SELECT pgrollup_unsafedroptriggers__{rollup_name}__{pg_rollup['table_alias']}();
+                SELECT pgrollup_unsafedroptriggers__{rollup_name}__{pgrollup['table_alias']}();
                 ''')
 
-        if pg_rollup['mode'] == 'cron':
+        if pgrollup['mode'] == 'cron':
             plpy.execute(f'''
-                SELECT cron.unschedule('pg_rollup.{rollup_name}');
+                SELECT cron.unschedule('pgrollup.{rollup_name}');
                 ''')
             plpy.execute(f"""
-                select do_rollup('{rollup_name}','{pg_rollup['table_alias']}');
+                select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
                 """)
 
-        if pg_rollup['mode'] == 'manual':
+        if pgrollup['mode'] == 'manual':
             plpy.execute(f"""
-                select do_rollup('{rollup_name}','{pg_rollup['table_alias']}');
+                select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
                 """)
 
         ########################################    
@@ -924,13 +924,13 @@ RETURNS VOID AS $func$
             sql = (f"""
                 SELECT count(*) AS count
                 FROM cron.job
-                WHERE jobname ILIKE 'pg_rollup.%';
+                WHERE jobname ILIKE 'pgrollup.%';
                 """)
             num_jobs = plpy.execute(sql)[0]['count']
             delay = 13*num_jobs%60
             plpy.execute(f'''
                 SELECT cron.schedule(
-                    'pg_rollup.{rollup_name}',
+                    'pgrollup.{rollup_name}',
                     '* * * * *',
                     $$SELECT do_rollup('{rollup_name}',delay_seconds=>{delay});$$
                 );
@@ -939,13 +939,13 @@ RETURNS VOID AS $func$
         if mode=='trigger':
 
             # first we do a manual rollup to ensure that the rollup table is up to date
-            if pg_rollup['event_id_sequence_name'] is not None:
+            if pgrollup['event_id_sequence_name'] is not None:
                 plpy.execute(f"""
-                    select do_rollup('{rollup_name}','{pg_rollup['table_alias']}');
+                    select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
                     """)
 
             # next we create triggers
-            sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pg_rollup['table_alias']+'();'
+            sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pgrollup['table_alias']+'();'
             plpy.execute(sql)
 
     plpy.execute(f"UPDATE pgrollup_rollups SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
@@ -955,8 +955,8 @@ LANGUAGE plpython3u;
 
 CREATE OR REPLACE FUNCTION drop_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
-    import pg_rollup
-    #sql = pg_rollup.drop_rollup_str(rollup_name)
+    import pgrollup
+    #sql = pgrollup.drop_rollup_str(rollup_name)
     sql = 'select pgrollup_drop__'+rollup_name+'();'
     plpy.execute(sql)
 $$
