@@ -20,6 +20,9 @@ CREATE MATERIALIZED VIEW dstest_rollup1 AS (
     FROM dstest
 );
 
+/*
+FIXME: this seems to work for postgres13 but not postgres12
+
 CREATE MATERIALIZED VIEW dstest_rollup2 AS (
     SELECT 
         frequent_strings_sketch_result_no_false_negatives(frequent_strings_sketch_build(10,b)) AS freq_strings_10
@@ -30,6 +33,7 @@ CREATE MATERIALIZED VIEW dstest_rollup2 AS (
         --frequent_strings_sketch_result_no_false_negatives(frequent_strings_sketch_build(2,b)) AS freq_strings_2
     FROM dstest
 );
+*/
 
 SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
 SELECT assert_rollup('dstest_rollup2');

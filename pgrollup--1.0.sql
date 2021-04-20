@@ -1,5 +1,10 @@
 \echo Use "CREATE EXTENSION pgrollup" to load this file. \quit
 
+CREATE OR REPLACE FUNCTION raw_parser(query text)
+RETURNS text
+AS 'MODULE_PATHNAME','raw_parser_sql'
+LANGUAGE C IMMUTABLE STRICT;
+
 --------------------------------------------------------------------------------
 
 CREATE TABLE algebra (

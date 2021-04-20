@@ -53,6 +53,12 @@ RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*
         python3-setuptools \
         make
 
+RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*\)\/.*/\1/p"`             \
+ && export PG_MINOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-$PG_MAJOR\/\S*\s\(\S*\)\s.*/\1/p"` \
+ && apt-get install -y --no-install-recommends \
+        postgresql-server-dev-$PG_MAJOR \
+        gcc
+
 # copy over the project
 COPY . /tmp/pg_rollup
 COPY postgresql.conf /etc/postgresql.conf.pg_rollup
