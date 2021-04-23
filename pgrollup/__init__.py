@@ -156,7 +156,7 @@ class Rollup:
         for joininfo in joininfos:
             self.joininfos_merged.get(joininfo['table_name'],[]).append(joininfo)
 
-        self.groups = [Key(k.value, k.type, 'group_'+k.name if k.name[0]!='"' else k.name,None) for k in groups]
+        self.groups = [Key(k.value, k.type, ''+k.name if k.name[0]!='"' else k.name,None) for k in groups]
         self.columns_raw = sorted(columns_raw, key=lambda column: column.type['typlen'], reverse=True)
         self.columns_view = columns_view
         self.where_clause = where_clause if where_clause else 'TRUE'

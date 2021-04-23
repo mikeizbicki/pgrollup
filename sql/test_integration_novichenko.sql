@@ -150,6 +150,7 @@ CREATE MATERIALIZED VIEW metahtml_rollup6 AS (
     GROUP BY links
 );
 
+
 insert into metahtml (accessed_at, url, jsonb) values
     ('2020-01-01 00:00:00', 'https://google.com', '{}'),
     ('2020-01-01 00:00:00', 'https://google.com/search', '{}'),
@@ -165,3 +166,28 @@ select assert_rollup('metahtml_rollup2');
 select assert_rollup('metahtml_rollup3');
 select assert_rollup('metahtml_rollup4');
 select assert_rollup('metahtml_rollup5');
+
+--------------------------------------------------------------------------------
+-- this test is just to verify that group by columns get parsed correctly
+
+CREATE VIEW metahtml_rollup_langmonth AS (
+    SELECT
+        jsonb->'language'->'best'->>'value' AS language,  
+        date_trunc('month',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published,
+        hll_count(url) AS url,
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath
+    FROM metahtml
+    GROUP BY language,timestamp_published
+);
+/*
+SELECT ((metahtml.jsonb -> 'language'::text) -> 'best'::text) ->> 'value'::text AS language,
+    date_trunc('month'::text, ((((metahtml.jsonb -> 'timestamp.published'::text) -> 'best'::text) -> 'value'::text) ->> 'lo'::text)::timestamp with time zone) AS timestamp_published,
+    hll_count(metahtml.url) AS url,
+    hll_count(url_hostpathquery_key(metahtml.url)) AS hostpathquery,
+    hll_count(url_hostpath_key(metahtml.url)) AS hostpath
+   FROM metahtml
+  GROUP BY (((metahtml.jsonb -> 'language'::text) -> 'best'::text) ->> 'value'::text), (date_trunc('month'::text, ((((metahtml.jsonb -> 'timestamp.published'::text) -> 'best'::text) -> 'value'::text) ->> 'lo'::text)::timestamp with time zone));
+*/
+
+select * from metahtml_rollup_langmonth;

@@ -48,10 +48,12 @@ insert into arrtest (a,b,c,d) values
 create materialized view arrtest_rollup0 as (
     select
         count(*),
-        unnest(arrtest.b) as b
+        unnest(array_uniq(b)) as qqq
     from arrtest
-    group by b
+    group by qqq
 );
+
+select * from arrtest_rollup0;
 
 create materialized view arrtest_rollup1 as (
     select 

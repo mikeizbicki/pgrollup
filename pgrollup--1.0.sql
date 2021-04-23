@@ -732,12 +732,30 @@ RETURNS TEXT AS $$
     columns_view_list = []
     raw_columns = []
     columns_minus_groups = []
+    new_groups = []
     for value,name in columns:
         value_groups = [ value for value,name in groups]
         name_groups = [ name for value,name in groups]
         name_groups += [ joininfos[0]['table_name']+'.'+name for value,name in groups ]
         if '('+value+')' not in value_groups and value not in value_groups and name not in name_groups and joininfos[0]['table_name']+'.'+name not in value_groups and joininfos[0]['table_name']+'.'+name not in name_groups:
             columns_minus_groups.append((value,name))
+        else:
+            new_groups.append((value,name))
+
+    '''
+    groups_list = []
+    for value,name in groups:
+        groups_list.append(pgrollup.Key(value,get_type(value),name,None))
+    '''
+    groups_list = []
+    for value,name in new_groups:
+        groups_list.append(pgrollup.Key(value,get_type(value),name,None))
+    for value,name in groups:
+        value_groups = [ value for value,name in new_groups]
+        valuep_groups = [ '('+value+')' for value,name in new_groups]
+        name_groups = [ name for value,name in new_groups]
+        if '('+value+')' not in value_groups and value not in valuep_groups and value not in value_groups and name not in name_groups and joininfos[0]['table_name']+'.'+name not in value_groups and joininfos[0]['table_name']+'.'+name not in name_groups:
+            groups_list.append(pgrollup.Key(value,get_type(value),name,None))
 
     for value,name in columns_minus_groups:
         value_substitute_views = pgrollup.parsing_functions.substitute_views(value, all_algebras)

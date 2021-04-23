@@ -117,6 +117,17 @@ CREATE MATERIALIZED VIEW testparsing_rollup9 AS (
 
 select * from testparsing_rollup9;
 
+CREATE MATERIALIZED VIEW testparsing_rollup10 AS (
+    select
+        name AS foo,
+        length(name) AS bar,
+        count(*)
+    from testparsing
+    group by foo,bar
+) WITH NO DATA;
+
+select * from testparsing_rollup10;
+
 select assert_rollup('testparsing_rollup1');
 select assert_rollup('testparsing_rollup2');
 select assert_rollup('testparsing_rollup3');

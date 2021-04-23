@@ -36,10 +36,7 @@ SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  
 (1 row)
 
-SELECT assert_rollup('dstest_rollup2');
-ERROR:  relation "dstest_rollup2" does not exist
-LINE 1: SELECT assert_rollup('dstest_rollup2');
-                             ^
+--SELECT assert_rollup('dstest_rollup2');
 insert into dstest (a,b) (select round(random()*100),text(round(random()^2*100)) from generate_series(0,10000));
 SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  assert_rollup_relative_error 
@@ -47,10 +44,7 @@ SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  
 (1 row)
 
-SELECT assert_rollup('dstest_rollup2');
-ERROR:  relation "dstest_rollup2" does not exist
-LINE 1: SELECT assert_rollup('dstest_rollup2');
-                             ^
+--SELECT assert_rollup('dstest_rollup2');
 insert into dstest (a,b) (select round(random()*100),text(round(random()^2*100)) from generate_series(0,10000));
 SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  assert_rollup_relative_error 
@@ -58,8 +52,5 @@ SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
  
 (1 row)
 
-SELECT assert_rollup('dstest_rollup2');
-ERROR:  relation "dstest_rollup2" does not exist
-LINE 1: SELECT assert_rollup('dstest_rollup2');
-                             ^
+--SELECT assert_rollup('dstest_rollup2');
 drop table dstest cascade;

@@ -60,18 +60,18 @@ insert into testinternal (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 select * from testinternal_internal1;
- avg | group_name | group_num 
------+------------+-----------
-   8 |            |         8
-   9 |            |         9
-   1 |            |         1
-   1 | alice      |         1
-   5 | bill       |         5
-   5 | elliot     |         5
-   5 | alice      |         5
-   1 | charlie    |         1
-   4 | dave       |         4
-   4 | alice      |         4
+ avg |  name   | num 
+-----+---------+-----
+   8 |         |   8
+   9 |         |   9
+   1 |         |   1
+   1 | alice   |   1
+   5 | bill    |   5
+   5 | elliot  |   5
+   5 | alice   |   5
+   1 | charlie |   1
+   4 | dave    |   4
+   4 | alice   |   4
 (10 rows)
 
 select assert_rollup('testinternal_internal1');
