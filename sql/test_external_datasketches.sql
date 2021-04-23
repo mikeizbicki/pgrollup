@@ -35,17 +35,17 @@ CREATE MATERIALIZED VIEW dstest_rollup2 AS (
 );
 */
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.3);
 --SELECT assert_rollup('dstest_rollup2');
 
 insert into dstest (a,b) (select round(random()*100),text(round(random()^2*100)) from generate_series(0,10000));
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.3);
 --SELECT assert_rollup('dstest_rollup2');
 
 insert into dstest (a,b) (select round(random()*100),text(round(random()^2*100)) from generate_series(0,10000));
 
-SELECT assert_rollup_relative_error('dstest_rollup1', 0.2);
+SELECT assert_rollup_relative_error('dstest_rollup1', 0.3);
 --SELECT assert_rollup('dstest_rollup2');
 
 drop table dstest cascade;
