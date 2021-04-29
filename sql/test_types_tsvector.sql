@@ -1,8 +1,8 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 
-create temporary table messages (
+create table messages (
     id serial primary key,
     id_user integer,
     text text
@@ -25,31 +25,26 @@ insert into messages (id_user, text) values
     (NULL, 'obama president'),
     (NULL, 'president trump');
     
-select create_rollup(
-    'messages',
-    'messages_rollup1',
-    wheres => $$
+create materialized view messages_rollup1 as (
+    select
+        count(*),
         unnest(tsvector_to_array(to_tsvector(text))) AS tokens
-    $$
+    from messages
+    group by tokens
 );
 
-select create_rollup(
-    'messages',
-    'messages_rollup2',
-    wheres => $$
-        unnest(tsvector_to_array(to_tsvector(text))) AS tokens
-    $$,
-    rollups => $$
-        hll(id_user)
-    $$
+create materialized view messages_rollup2 as (
+    select 
+        unnest(tsvector_to_array(to_tsvector(text))) AS tokens,
+        count(id_user)
+    from messages
+    group by tokens
 );
 
-select create_rollup(
-    'messages',
-    'messages_rollup3',
-    rollups => $$
-        hll(id_user)
-    $$
+create materialized view messages_rollup3 as (
+    select 
+        count(id_user)
+    from messages
 );
 
 
@@ -77,3 +72,5 @@ insert into messages (id_user, text) values
 select assert_rollup('messages_rollup1');
 select assert_rollup('messages_rollup2');
 select assert_rollup('messages_rollup3');
+
+drop table messages cascade;

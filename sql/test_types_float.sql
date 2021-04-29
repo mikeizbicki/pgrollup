@@ -1,16 +1,14 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 
-create temporary table testfloat (
+create table testfloat (
     id serial primary key,
     num bigint
 );
 
-select create_rollup(
-    'testfloat',
-    'testfloat_rollup1',
-    rollups => $$
+create materialized view testfloat_rollup1 as (
+    select 
         count(num),
         avg(num),
         var_pop(num),
@@ -19,7 +17,7 @@ select create_rollup(
         stddev(num),
         stddev_pop(num),
         stddev_samp(num)
-    $$
+    from testfloat
 );
 
 
@@ -85,3 +83,4 @@ select assert_rollup_relative_error('testfloat_rollup1', 1e-12);
 
 --select 'testfloat_rollup1',* from testfloat_rollup1 union select 'testfloat_rollup1_groundtruth',* from testfloat_rollup1_groundtruth;
 
+drop table testfloat cascade;

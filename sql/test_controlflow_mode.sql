@@ -1,8 +1,8 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
@@ -36,69 +36,60 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name',
-    key => 'id',
-    mode => 'manual'
+create materialized view test_rollup1 as (
+    select name,count(*)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup1b',
-    wheres => 'name',
-    mode => 'manual'
+create materialized view test_rollup1b as (
+    select name,count(*)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup2',
-    wheres => 'name,num',
-    key => 'id',
-    mode => 'manual'
+create materialized view test_rollup2 as (
+    select name,num,count(*)
+    from test
+    group by name,num
 );
 
-select create_rollup(
-    'test',
-    'test_rollup2b',
-    wheres => 'name,num',
-    mode => 'manual'
+create materialized view test_rollup2b as (
+    select name,num,count(*)
+    from test
+    group by name,num
 );
 
-select create_rollup(
-    'test',
-    'test_rollup3',
-    wheres => 'name',
-    rollups => 'count(num)',
-    key => 'id',
-    mode => 'manual'
+create materialized view test_rollup3 as (
+    select name,count(num)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup3b',
-    wheres => 'name',
-    rollups => 'count(num)',
-    mode => 'manual'
+create materialized view test_rollup3b as (
+    select name,count(num)
+    from test
+    group by name
 );
 
-select create_rollup(
-    'test',
-    'test_rollup4',
-    rollups => 'count(name),count(num)',
-    key => 'id',
-    mode => 'manual'
+create materialized view test_rollup4 as (
+    select count(name) AS count1,count(num) AS count2
+    from test
 );
 
-select create_rollup(
-    'test',
-    'test_rollup4b',
-    rollups => 'count(name),count(num)',
-    mode => 'manual'
+create materialized view test_rollup4b as (
+    select count(name) AS count1,count(num) AS count2
+    from test
 );
 
+select rollup_mode('test_rollup1','manual');
+select rollup_mode('test_rollup1b','manual');
+select rollup_mode('test_rollup2','manual');
+select rollup_mode('test_rollup2b','manual');
+select rollup_mode('test_rollup3','manual');
+select rollup_mode('test_rollup3b','manual');
+select rollup_mode('test_rollup4','manual');
+select rollup_mode('test_rollup4b','manual');
 
 insert into test (name,num) values
     ('alice', 1),
@@ -543,77 +534,77 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
-select do_rollup('test_rollup1',5);
-select do_rollup('test_rollup1b',5);
-select do_rollup('test_rollup2',5);
-select do_rollup('test_rollup2b',5);
-select do_rollup('test_rollup3',5);
-select do_rollup('test_rollup3b',5);
-select do_rollup('test_rollup4',5);
-select do_rollup('test_rollup4b',5);
+select do_rollup('test_rollup1',NULL,5);
+select do_rollup('test_rollup1b',NULL,5);
+select do_rollup('test_rollup2',NULL,5);
+select do_rollup('test_rollup2b',NULL,5);
+select do_rollup('test_rollup3',NULL,5);
+select do_rollup('test_rollup3b',NULL,5);
+select do_rollup('test_rollup4',NULL,5);
+select do_rollup('test_rollup4b',NULL,5);
 
 select assert_rollup('test_rollup1');
 select assert_rollup('test_rollup1b');

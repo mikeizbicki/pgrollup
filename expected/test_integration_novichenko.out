@@ -1,6 +1,6 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 /*
  * function/table definitions are simplified forms of https://github.com/mikeizbicki/novichenko
  */
@@ -77,111 +77,62 @@ insert into metahtml (accessed_at, url, jsonb) values
     ('2020-01-03 00:00:00', 'https://google.com', '{}'),
     ('2020-01-04 00:00:00', 'https://google.com', '{}'),
     ('2020-01-05 00:00:00', 'https://google.com', '{}');
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup1',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup1 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         url_host_key(url) AS host_key,
         date_trunc('day', accessed_at) AS access_day
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY host_key, access_day
 );
- create_rollup 
----------------
- 
-(1 row)
-
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup2',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup2 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         url_host_key(url) AS host_key
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY host_key
 );
- create_rollup 
----------------
- 
-(1 row)
-
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup3',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup3 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         date_trunc('day', accessed_at) AS access_day
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY access_day
 );
- create_rollup 
----------------
- 
-(1 row)
-
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup4',
-    wheres => $$
+CREATE MATERIALIZED VIEW metahtml_rollup4 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
         date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+    FROM metahtml
+    GROUP BY timestamp_published
 );
- create_rollup 
----------------
- 
-(1 row)
-
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup5',
-    wheres => $$
-        date_trunc('day', accessed_at) AS access_day,
-        date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath
-    $$
+CREATE MATERIALIZED VIEW metahtml_rollup5 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
+        date_trunc('day',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published,
+        date_trunc('day', accessed_at) AS access_day
+    FROM metahtml
+    GROUP BY timestamp_published,access_day
 );
- create_rollup 
----------------
- 
-(1 row)
-
-SELECT create_rollup(
-    'metahtml',
-    'metahtml_rollup_links',
-    wheres => $$
-        jsonb_array_elements(jsonb->'links'->'best'->'value')->>'href' AS links,
-    $$,
-    rollups => $$
-        hll(url),
-        hll(url_hostpathquery_key(url)) AS hostpathquery,
-        hll(url_hostpath_key(url)) AS hostpath,
-        hll(url_host_key(url)) AS host,
-    $$
+CREATE MATERIALIZED VIEW metahtml_rollup6 AS (
+    SELECT
+        hll_count(url),
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath,
+        jsonb_array_elements(jsonb->'links'->'best'->'value')->>'href' AS links
+    FROM metahtml
+    GROUP BY links
 );
- create_rollup 
----------------
- 
-(1 row)
-
 insert into metahtml (accessed_at, url, jsonb) values
     ('2020-01-01 00:00:00', 'https://google.com', '{}'),
     ('2020-01-01 00:00:00', 'https://google.com/search', '{}'),
@@ -219,5 +170,32 @@ select assert_rollup('metahtml_rollup5');
  assert_rollup 
 ---------------
  
+(1 row)
+
+--------------------------------------------------------------------------------
+-- this test is just to verify that group by columns get parsed correctly
+CREATE VIEW metahtml_rollup_langmonth AS (
+    SELECT
+        jsonb->'language'->'best'->>'value' AS language,  
+        date_trunc('month',(jsonb->'timestamp.published'->'best'->'value'->>'lo')::timestamptz) AS timestamp_published,
+        hll_count(url) AS url,
+        hll_count(url_hostpathquery_key(url)) AS hostpathquery,
+        hll_count(url_hostpath_key(url)) AS hostpath
+    FROM metahtml
+    GROUP BY language,timestamp_published
+);
+/*
+SELECT ((metahtml.jsonb -> 'language'::text) -> 'best'::text) ->> 'value'::text AS language,
+    date_trunc('month'::text, ((((metahtml.jsonb -> 'timestamp.published'::text) -> 'best'::text) -> 'value'::text) ->> 'lo'::text)::timestamp with time zone) AS timestamp_published,
+    hll_count(metahtml.url) AS url,
+    hll_count(url_hostpathquery_key(metahtml.url)) AS hostpathquery,
+    hll_count(url_hostpath_key(metahtml.url)) AS hostpath
+   FROM metahtml
+  GROUP BY (((metahtml.jsonb -> 'language'::text) -> 'best'::text) ->> 'value'::text), (date_trunc('month'::text, ((((metahtml.jsonb -> 'timestamp.published'::text) -> 'best'::text) -> 'value'::text) ->> 'lo'::text)::timestamp with time zone));
+*/
+select * from metahtml_rollup_langmonth;
+ language | timestamp_published | url | hostpathquery | hostpath 
+----------+---------------------+-----+---------------+----------
+          |                     |     |               |         
 (1 row)
 

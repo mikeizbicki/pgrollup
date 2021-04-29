@@ -1,8 +1,8 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 create extension if not exists pg_cron;
-create temporary table test_cron (
+create table test_cron (
     id serial primary key,
     name text,
     num int
@@ -34,51 +34,45 @@ insert into test_cron (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-UPDATE pg_rollup_settings SET value='cron' WHERE name='default_mode';
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup1',
-    wheres => 'name',
-    key => 'id'
+UPDATE pgrollup_settings SET value='cron' WHERE name='default_mode';
+CREATE MATERIALIZED VIEW test_cron_rollup1 AS (
+    SELECT 
+        name,
+        count(*)
+    FROM test_cron
+    GROUP BY name
 );
- create_rollup 
----------------
+CREATE MATERIALIZED VIEW test_cron_rollup2 AS (
+    SELECT 
+        name,
+        num,
+        count(*)
+    FROM test_cron
+    GROUP BY name,num
+);
+CREATE MATERIALIZED VIEW test_cron_rollup3 AS (
+    SELECT 
+        name,
+        sum(num)
+    FROM test_cron
+    GROUP BY name
+);
+SELECT rollup_mode('test_cron_rollup3','trigger');
+ rollup_mode 
+-------------
  
 (1 row)
 
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup2',
-    wheres => 'name,num',
-    key => 'id'
+CREATE MATERIALIZED VIEW test_cron_rollup4 AS (
+    SELECT 
+        name,
+        sum(num)
+    FROM test_cron
+    GROUP BY name
 );
- create_rollup 
----------------
- 
-(1 row)
-
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup3',
-    wheres => 'name',
-    rollups => 'hll(num)',
-    key => 'id',
-    mode => 'trigger'
-);
- create_rollup 
----------------
- 
-(1 row)
-
-select create_rollup(
-    'test_cron',
-    'test_cron_rollup4',
-    rollups => 'hll(name),hll(num)',
-    key => 'id',
-    mode => 'cron'
-);
- create_rollup 
----------------
+SELECT rollup_mode('test_cron_rollup4','cron');
+ rollup_mode 
+-------------
  
 (1 row)
 
@@ -113,12 +107,13 @@ insert into test_cron (name,num) values
 -- therefore, the rollup commands will not get executed and the tables will be out of date;
 -- to test_cron the cron mode, therefore, we will inspect the output of the cron job list
 -- and verify that all jobs that should be added have been added
-select * from cron.job;
- jobid | schedule  |                         command                          | nodename  | nodeport | database | username | active |           jobname           
--------+-----------+----------------------------------------------------------+-----------+----------+----------+----------+--------+-----------------------------
-     1 | * * * * * | SELECT do_rollup('test_cron_rollup1',delay_seconds=>0);  | localhost |     5432 | root     | root     | t      | pg_rollup.test_cron_rollup1
-     2 | * * * * * | SELECT do_rollup('test_cron_rollup2',delay_seconds=>13); | localhost |     5432 | root     | root     | t      | pg_rollup.test_cron_rollup2
-     3 | * * * * * | SELECT do_rollup('test_cron_rollup4',delay_seconds=>26); | localhost |     5432 | root     | root     | t      | pg_rollup.test_cron_rollup4
+SELECT * FROM cron.job;
+ jobid | schedule  |                         command                          | nodename  | nodeport | database | username | active |          jobname           
+-------+-----------+----------------------------------------------------------+-----------+----------+----------+----------+--------+----------------------------
+     1 | * * * * * | SELECT do_rollup('test_cron_rollup1',delay_seconds=>0);  | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup1
+     2 | * * * * * | SELECT do_rollup('test_cron_rollup2',delay_seconds=>13); | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup2
+     5 | * * * * * | SELECT do_rollup('test_cron_rollup4',delay_seconds=>26); | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup4
 (3 rows)
 
-UPDATE pg_rollup_settings SET value='trigger' WHERE name='default_mode';
+UPDATE pgrollup_settings SET value='trigger' WHERE name='default_mode';
+DROP TABLE test_cron CASCADE;

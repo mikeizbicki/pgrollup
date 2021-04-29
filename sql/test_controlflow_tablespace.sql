@@ -1,11 +1,11 @@
 SET client_min_messages TO WARNING;
 create or replace language plpython3u;
-create extension if not exists pg_rollup;
+create extension if not exists pgrollup;
 
 drop tablespace if exists example;
 create tablespace example location '/tmp/tablespace';
 
-create temporary table test (
+create table test (
     id serial primary key,
     name text,
     num int
@@ -39,11 +39,13 @@ insert into test (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-select create_rollup(
-    'test',
-    'test_rollup1',
-    wheres => 'name',
-    tablespace => 'example'
+create materialized view test_rollup1 tablespace example as (
+    select name,count(*)
+    from test
+    group by name
 );
 
+SELECT tablename from pg_tables WHERE tablespace = 'example';
+
 drop table test cascade;
+drop tablespace example;

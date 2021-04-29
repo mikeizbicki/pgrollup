@@ -1,2 +1,0 @@
-comment = 'create rollup tables for fast aggregate queries'
-default_version = 1.0
