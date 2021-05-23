@@ -1,4 +1,4 @@
-# pg\_rollup [![Build Status](https://github.com/mikeizbicki/pg_rollup/workflows/tests/badge.svg)](https://github.com/mikeizbicki/pg_rollup/actions)
+# pgrollup [![Build Status](https://github.com/mikeizbicki/pgrollup/workflows/tests/badge.svg)](https://github.com/mikeizbicki/pgrollup/actions)
 
 **tl;dr**
 This extension uses [monoids]() to solve the [incrementally refresh materialized view problem]() in Postgres.
@@ -14,7 +14,7 @@ Outline:
 1. The Problem
     1. Existing Incomplete Solution 1: Native Oracle/Postgres Implementations
     1. Existing Incomplete Solution 1: Triggers
-1. The pg\_rollup Solution
+1. The pgrollup Solution
 1. Supported Monoids/Groups
     1. Native Postgres Monoids/Groups
     1. Monoids/Groups provided by other extensions
@@ -98,7 +98,7 @@ The fundamental limit of both of these implementations, however, is that they do
 Monoids and groups are widely known in functional programming community for their ability to speed up parallel programming tasks,
 but AFAIK they have never been used to speed up incremental refreshes.
 See the [implementation details]() below for a full description of exactly what monoids and groups are,
-and how the pg\_rollup extension uses these algebraic structures for faster updates.
+and how the pgrollup extension uses these algebraic structures for faster updates.
 
 ### Existing Incomplete Solution 2: Triggers
 
@@ -122,9 +122,9 @@ These trigger-based solutions, however, also have significant limitations:
    1. not handling `NULL` values correctly, resulting in either failed `INSERT`s or silently incorrect results
    1. writing triggers for only the `INSERT` operation, forgetting about the `UPDATE`/`DELETE` operations, resulting in silently incorrect results when those operations are used
 
-   The pg\_rollup extension fully automates this entire process.
+   The pgrollup extension fully automates this entire process.
    Rather than writing hundreds of lines of complex, error-prone trigger logic that describes *how* to update the rollup table,
-   the pg\_rollup extension lets you write a short 3-4 line semantic description of *what* your rollup table should contain.
+   the pgrollup extension lets you write a short 3-4 line semantic description of *what* your rollup table should contain.
    The library automatically implements the *how* for you.
    The [Solution]() Section below shows the syntax and implementation details.
 
@@ -133,38 +133,38 @@ These trigger-based solutions, however, also have significant limitations:
 
    This library automates the process of implementing these monoids/groups in your database rollup tables,
    and also provides a centralized reference of all the existing monoids/groups currently implemented in postgres.
-   See the [Monoids/Groups]() section below for a list of currently implemented monoids/groups and instructions on how to use them with the pg\_rollup library.
+   See the [Monoids/Groups]() section below for a list of currently implemented monoids/groups and instructions on how to use them with the pgrollup library.
 
 1. Triggers can impose significant overhead on the `INSERT`/`UPDATE`/`DELETE` operations of the database.
    A statement that invokes a trigger is not done executing until all of the triggers are done executing,
    and triggers cannot execute in parallel.
    This implies that a table with many rollups will suffer significant performance degradation when modifying its contents.
 
-   The pg\_rollup extension solves this problem by removing the need for these expensive triggers.
+   The pgrollup extension solves this problem by removing the need for these expensive triggers.
    The updates to the rollup tables can happen fully in parallel in background cron processes,
    so `INSERT`/`UPDATE`/`DELETE` performance remains exactly as it did before.
    The [Modes]() Section below describes the implementation details for how this works internally.
   
 ## The Solution
 
-The pg_rollup extension provides a simple interface for creating rollups that solves all of the problems of the previous solutions.
+The pgrollup extension provides a simple interface for creating rollups that solves all of the problems of the previous solutions.
 The following code loads the extension:
 
 ```
 CREATE LANGUAGE pgplpython3u;
-CREATE EXTENSION pg_rollup;
+CREATE EXTENSION pgrollup;
 ```
 
-The current implementation of pg\_rollup requires the `pgplpython3u` language and python >= 3.6.
+The current implementation of pgrollup requires the `pgplpython3u` language and python >= 3.6.
 For a discussion of why python is required, see the [Limitations]() section below.
 
-In order to fully demonstrate the power of the pg\_rollup extension, we will also load the `hll` and `tdigest` extensions below:
+In order to fully demonstrate the power of the pgrollup extension, we will also load the `hll` and `tdigest` extensions below:
 ```
 CREATE EXTENSION hll;
 CREATE EXTENSION tdigest;
 ```
 These extensions are not strictly required to be loaded,
-and the functionality of pg\_rollup will gracefully degrade if they are not present.
+and the functionality of pgrollup will gracefully degrade if they are not present.
 
 We can now create a managed rollup table that represents the same information as our materialized view above with the following command:
 ```
@@ -199,6 +199,12 @@ easy:
 
 1. use `count(*)` to implement aggregateless tables
 
+1. DROP MATERIALIZED VIEW event trigger
+
+1. use the storage parameter WITH syntax
+
+1. set pg_catalog.pg_table_is_visible to FALSE for all the auxiliary tables
+
 medium:
 
 1. better parsing https://github.com/pganalyze/queryparser/tree/master/extension
@@ -215,6 +221,8 @@ medium:
 
 1. good interface for settings
     1. allowing deletes for non-groups
+
+1. views on other views
 
 hard
 
