@@ -615,7 +615,7 @@ RETURNS VOID AS $$
     import pgrollup.parsing
     cmds = pgrollup.parsing.parse_create(text)
     for cmd in cmds:
-        sql = f'''
+        sql = '''
         SELECT create_rollup_internal(
             $1,
             columns => $2,
@@ -679,8 +679,8 @@ RETURNS TEXT AS $$
         '''
         helper funcions that returns the type of expr
         '''
-        sql = (f'''
-            select {expr}
+        sql = ('''
+            select '''+expr+'''
             '''
             +
             ''.join([
@@ -694,13 +694,13 @@ RETURNS TEXT AS $$
             ''')
         res = plpy.execute(sql)
         t_oid = res.coltypes()[0]
-        sql = f'select typname,typlen from pg_type where oid={t_oid} limit 1;'
+        sql = 'select typname,typlen from pg_type where oid='+str(t_oid)+' limit 1;' 
         row = plpy.execute(sql)[0]
         return row
 
 
     # get a list of all algebras
-    sql = f'select * from algebra;'
+    sql = 'select * from algebra;'
     rows = plpy.execute(sql)
     all_algebras = list(rows)
 
@@ -776,13 +776,13 @@ RETURNS TEXT AS $$
         type = get_type(expr)
 
         # get the algebra dictionary and key
-        sql = f"select * from algebra where name='{algebra}';"
+        sql = "select * from algebra where name='"+algebra+"';"
         res = list(plpy.execute(sql))
         if len(res)==1:
             algebra_dictionary = res[0]
             key = pgrollup.Key(expr,type,name,algebra_dictionary)
         else:
-            plpy.error(f'algbera {algebra} not found in the algebra table')
+            plpy.error('algbera '+algebra+' not found in the algebra table')
 
         # add column info
         columns_raw_list.append(key)
@@ -800,8 +800,8 @@ RETURNS TEXT AS $$
 
         for dep in deps:
             matched = False
-            if f'{dep}({expr})' not in raw_columns:
-                raw_columns.append(f'{dep}({expr})')
+            if dep+'('+expr+')' not in raw_columns:
+                raw_columns.append(dep+'('+expr+')')
 
     # if there are any duplicate names in columns_raw_list, throw an error;
     # this should never happen, and is simply a consistency check
@@ -809,12 +809,12 @@ RETURNS TEXT AS $$
     duplicate_names = [item for item, count in collections.Counter(names).items() if count > 1]
     if len(duplicate_names) > 0:
         plpy.warning('names='+str(names))
-        plpy.error(f'duplicate names in columns: '+str(duplicate_names))
+        plpy.error('duplicate names in columns: '+str(duplicate_names))
 
     # check if the table is temporary
     is_temp = False
     for joininfo in joininfos:
-        sql = f"SELECT relpersistence='t' as is_temp FROM pg_class where relname='{joininfo['table_name']}'"
+        sql = "SELECT relpersistence='t' as is_temp FROM pg_class where relname='"+joininfo['table_name']+"'"
         is_temp = is_temp or plpy.execute(sql)[0]['is_temp']
 
     # compute the information needed for manual/cron rollups
@@ -822,43 +822,43 @@ RETURNS TEXT AS $$
         rollup_column = joininfo.get('rollup_column')
         table_name = joininfo['table_name']
         if rollup_column:
-            event_id_sequence_name = f"{table_name}_{rollup_column}_seq"
+            event_id_sequence_name = table_name+"_"+rollup_column+"_seq"
         else:
             # no rollup_column was given, so we try to use the primary key
-            sql=f'''
+            sql="""
             SELECT ind_column.attname AS pk
             FROM pg_class tbl
             JOIN pg_index ind ON ind.indrelid = tbl.oid
             JOIN pg_class ind_table ON ind_table.oid = ind.indexrelid
             JOIN pg_attribute ind_column ON ind_column.attrelid = ind_table.oid
-            WHERE tbl.relname = '{table_name}'
+            WHERE tbl.relname = '"""+table_name+"""'
               AND ind.indisprimary;
-            '''
+            """
             pks = list(plpy.execute(sql))
 
             event_id_sequence_name = None
             rollup_column = None
             if len(pks) == 0:
-                plpy.notice(f'no primary key in table {table_name}')
+                plpy.notice('no primary key in table '+table_name)
             elif len(pks) > 1:
-                plpy.notice(f'multi-column primary key in table {table_name}')
+                plpy.notice('multi-column primary key in table '+table_name)
             else:
-                event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
+                event_id_sequence_name = table_name+"_"+pks[0]['pk']+"_seq"
                 rollup_column = pks[0]['pk']
         joininfo['rollup_column'] = rollup_column
         joininfo['event_id_sequence_name'] = event_id_sequence_name
 
         # verify that the computed sequence exists in the db
-        sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
+        sql = "SELECT relname FROM pg_class WHERE relkind = 'S' and relname='"+event_id_sequence_name+"';";
         matches = list(plpy.execute(sql))
         if len(matches) == 0:
-            plpy.notice(f'sequence "{event_id_sequence_name}" not found in table')
+            plpy.notice('sequence "'+event_id_sequence_name+'" not found in table')
             event_id_sequence_name = None
             rollup_column = None
 
         # display warning messages
         if joininfo.get('rollup_column') is None:
-            plpy.notice(f'event_id_sequence_name={event_id_sequence_name}')
+            plpy.notice('event_id_sequence_name='+event_id_sequence_name)
             plpy.notice('no valid sequence found for manual/cron rollups; the only available rollup type is trigger')
 
     # verify that there are no subqueries
@@ -882,13 +882,13 @@ RETURNS TEXT AS $$
     ).create()
 
     # set the rollup mode
-    sqls += f"""
-    select rollup_mode('{rollup_name}','{mode}');
+    sqls += """
+    select rollup_mode('"""+rollup_name+"""','"""+mode+"""');
     """
 
     # insert values into the rollup
-    sqls += f"""
-    select {rollup_name}_raw_reset();
+    sqls += """
+    select """+rollup_name+"""_raw_reset();
     """
 
     if not dry_run:
@@ -905,12 +905,12 @@ CREATE OR REPLACE FUNCTION rollup_mode(
 )
 RETURNS VOID AS $func$
     
-    sql = (f"select * from pgrollup_rollups where rollup_name='{rollup_name}'")
+    sql = ("select * from pgrollup_rollups where rollup_name='"+rollup_name+"'")
     rows = list(plpy.execute(sql))
 
     for pgrollup in rows:
         if mode != 'trigger' and pgrollup['event_id_sequence_name'] is None:
-            plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
+            plpy.error('''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
 
         ########################################    
         # turn off the old mode
@@ -921,21 +921,21 @@ RETURNS VOID AS $func$
         # which is potentially an expensive operation.
         ########################################    
         if pgrollup['mode'] == 'trigger':
-            plpy.execute(f'''
-                SELECT pgrollup_unsafedroptriggers__{rollup_name}__{pgrollup['table_alias']}();
+            plpy.execute('''
+                SELECT pgrollup_unsafedroptriggers__'''+rollup_name+'''__'''+pgrollup['table_alias']+'''();
                 ''')
 
         if pgrollup['mode'] == 'cron':
-            plpy.execute(f'''
-                SELECT cron.unschedule('pgrollup.{rollup_name}');
-                ''')
-            plpy.execute(f"""
-                select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
+            plpy.execute("""
+                SELECT cron.unschedule('pgrollup."""+rollup_name+"""');
+                """)
+            plpy.execute("""
+                select do_rollup('"""+rollup_name+"""','"""+pgrollup['table_alias']+"""');
                 """)
 
         if pgrollup['mode'] == 'manual':
-            plpy.execute(f"""
-                select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
+            plpy.execute("""
+                select do_rollup('"""+rollup_name+"""','"""+pgrollup['table_alias']+"""');
                 """)
 
         ########################################    
@@ -944,34 +944,34 @@ RETURNS VOID AS $func$
         if mode=='cron':
             # we use a "random" delay on the cron job to ensure that all of the jobs
             # do not happen at the same time, overloading the database
-            sql = (f"""
+            sql = ("""
                 SELECT count(*) AS count
                 FROM cron.job
                 WHERE jobname ILIKE 'pgrollup.%';
                 """)
             num_jobs = plpy.execute(sql)[0]['count']
             delay = 13*num_jobs%60
-            plpy.execute(f'''
+            plpy.execute("""
                 SELECT cron.schedule(
-                    'pgrollup.{rollup_name}',
+                    'pgrollup."""+rollup_name+"""',
                     '* * * * *',
-                    $$SELECT do_rollup('{rollup_name}',delay_seconds=>{delay});$$
+                    $$SELECT do_rollup('"""+rollup_name+"""',delay_seconds=>"""+str(delay)+""");$$
                 );
-                ''')
+                """)
 
         if mode=='trigger':
 
             # first we do a manual rollup to ensure that the rollup table is up to date
             if pgrollup['event_id_sequence_name'] is not None:
-                plpy.execute(f"""
-                    select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
+                plpy.execute("""
+                    select do_rollup('"""+rollup_name+"""','"""+pgrollup['table_alias']+"""');
                     """)
 
             # next we create triggers
             sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pgrollup['table_alias']+'();'
             plpy.execute(sql)
 
-    plpy.execute(f"UPDATE pgrollup_rollups SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
+    plpy.execute("UPDATE pgrollup_rollups SET mode='"+mode+"' WHERE rollup_name='"+rollup_name+"';")
 $func$
 LANGUAGE plpython3u;
 
@@ -1002,15 +1002,15 @@ RETURNS NULL ON NULL INPUT;
 
 CREATE OR REPLACE FUNCTION assert_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
-    sql = f'select * from {rollup_name}_groundtruth except select * from {rollup_name};';
+    sql = 'select * from '+rollup_name+'_groundtruth except select * from '+rollup_name+';';
     res1 = plpy.execute(sql)
-    sql = f'select * from {rollup_name} except select * from {rollup_name}_groundtruth;';
+    sql = 'select * from '+rollup_name+' except select * from '+rollup_name+'_groundtruth;';
     res2 = plpy.execute(sql)
 
     for row in res1:
-        plpy.warning(f'result only in {rollup_name}_groundtruth: {str(row)}')
+        plpy.warning('result only in '+rollup_name+'_groundtruth: '+str(row))
     for row in res2:
-        plpy.warning(f'result only in {rollup_name}: {str(row)}')
+        plpy.warning('result only in '+rollup_name+': '+str(row))
 
     assert len(res1)==0
     assert len(res2)==0
@@ -1023,56 +1023,56 @@ $$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION rollup_column_relative_error(rollup_name REGCLASS, column_name TEXT) RETURNS DOUBLE PRECISION AS $$
-    sql = f'select "{column_name}" from {rollup_name};';
+    sql = 'select "'+column_name+'" from '+rollup_name+';';
     res = plpy.execute(sql)
     assert len(res)==1
     val1 = res[0][column_name]
 
-    sql = f'select "{column_name}" from {rollup_name}_groundtruth;';
+    sql = 'select "'+column_name+'" from '+rollup_name+'_groundtruth;';
     res = plpy.execute(sql)
     assert len(res)==1
     val2 = res[0][column_name]
 
-    sql = f'select relative_error({val1},{val2}) as relative_error;';
+    sql = 'select relative_error('+str(val1)+','+str(val2)+') as relative_error;'; 
     res = plpy.execute(sql)
     return res[0]['relative_error']
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION assert_rollup_column_relative_error(rollup_name REGCLASS, column_name TEXT, relative_error DOUBLE PRECISION) RETURNS VOID AS $$
-    sql = f"select rollup_column_relative_error('{rollup_name}','{column_name}') as relative_error;";
+    sql = "select rollup_column_relative_error('"+rollup_name+"','"+column_name+"') as relative_error;";
     res = plpy.execute(sql)
     if not res[0]['relative_error'] < relative_error:
-        plpy.error(f"relative_error={res[0]['relative_error']} > {relative_error}")
+        plpy.error("relative_error="+res[0]['relative_error']+" > "+relative_error)
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, relative_error DOUBLE PRECISION) RETURNS VOID AS $$
-    sql = f"select * from {rollup_name} where true limit 1;"
+    sql = "select * from "+rollup_name+" where true limit 1;"
     res = plpy.execute(sql)
     columns = res[0].keys()
     plpy.error('columns={str(columns)}')
 
-    sql = f"select rollup_column_relative_error('{rollup_name}','{column_name}') as relative_error;";
+    sql = "select rollup_column_relative_error('"+rollup_name}+",'"+column_name}+") as relative_error;";
     res = plpy.execute(sql)
     if not res[0]['relative_error'] < relative_error:
-        plpy.error(f"relative_error={res[0]['relative_error']} > {relative_error}")
+        plpy.error("relative_error="+res[0]['relative_error']+" > "+relative_error)
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
 
 
 CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, relative_error DOUBLE PRECISION) RETURNS VOID AS $$
     # get a list of the columns in the rollup
-    sql = f"select * from {rollup_name} where true limit 1;"
+    sql = "select * from "+rollup_name+" where true limit 1;"
     res = plpy.execute(sql)
     columns = res[0].keys()
 
     # count the number of columns that do not satisfy the relative_error condition
     num_bad_columns = 0
     for column_name in columns:
-        sql = f"select rollup_column_relative_error('{rollup_name}','{column_name}') as relative_error;";
+        sql = "select rollup_column_relative_error('"+rollup_name+"','"+column_name+"') as relative_error;";
         res = plpy.execute(sql)
         if not res[0]['relative_error'] < relative_error:
-            plpy.warning(f"column {column_name} has relative_error={res[0]['relative_error']} > {relative_error}")
+            plpy.warning("column "+column_name+" has relative_error="+res[0]['relative_error']+" > "+relative_error)
             num_bad_columns+=1
 
     # the test case
