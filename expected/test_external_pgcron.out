@@ -108,11 +108,11 @@ insert into test_cron (name,num) values
 -- to test_cron the cron mode, therefore, we will inspect the output of the cron job list
 -- and verify that all jobs that should be added have been added
 SELECT * FROM cron.job;
- jobid | schedule  |                         command                          | nodename  | nodeport | database | username | active |          jobname           
--------+-----------+----------------------------------------------------------+-----------+----------+----------+----------+--------+----------------------------
-     1 | * * * * * | SELECT do_rollup('test_cron_rollup1',delay_seconds=>0);  | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup1
-     2 | * * * * * | SELECT do_rollup('test_cron_rollup2',delay_seconds=>13); | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup2
-     5 | * * * * * | SELECT do_rollup('test_cron_rollup4',delay_seconds=>26); | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup4
+ jobid | schedule  |                                     command                                     | nodename  | nodeport | database | username | active |          jobname           
+-------+-----------+---------------------------------------------------------------------------------+-----------+----------+----------+----------+--------+----------------------------
+     1 | * * * * * | SELECT do_rollup('test_cron_rollup1',max_rollup_size=>10000,delay_seconds=>0);  | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup1
+     2 | * * * * * | SELECT do_rollup('test_cron_rollup2',max_rollup_size=>10000,delay_seconds=>13); | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup2
+     5 | * * * * * | SELECT do_rollup('test_cron_rollup4',max_rollup_size=>10000,delay_seconds=>26); | localhost |     5432 | root     | root     | t      | pgrollup.test_cron_rollup4
 (3 rows)
 
 UPDATE pgrollup_settings SET value='trigger' WHERE name='default_mode';

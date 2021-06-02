@@ -955,9 +955,18 @@ RETURNS VOID AS $func$
                 SELECT cron.schedule(
                     'pgrollup.{rollup_name}',
                     '* * * * *',
-                    $$SELECT do_rollup('{rollup_name}',delay_seconds=>{delay});$$
+                    $$SELECT do_rollup('{rollup_name}',max_rollup_size=>10000,delay_seconds=>{delay});$$
                 );
                 ''')
+            # FIXME:
+            # we specify the max_rollup_size for cron-based rollups because:
+            # for very expensive rollups, a full rollup can take longer than a minute to complete;
+            # in heavy-insert operations, this result in a backlog of rows that need to be rolled up;
+            # subsequent calls to do_rollup will have more work to do, and therefore take longer, exacerbating the problem;
+            # by limiting the max_rollup_size, we prevent a quadratic growth in the backlog size;
+            # if the rollup is very fast, however, we prevent it from rolling up properly;
+            # the optimal number depends on many factors, such as the speed of the rollup and config params like work_mem;
+            # ideally, it should be set automatically for each rollup and not hard coded.
 
         if mode=='trigger':
 
