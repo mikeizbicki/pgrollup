@@ -12,6 +12,7 @@ RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*
         gcc \
         g++ \
         git \
+        libboost-dev \
         make \
         postgresql-server-dev-$PG_MAJOR \
         postgresql-plpython3-$PG_MAJOR \
@@ -27,6 +28,7 @@ RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*
         gcc \
         g++ \
         git \
+        libboost-dev \
         make \
         postgresql-server-dev-$PG_MAJOR \
         postgresql-plpython3-$PG_MAJOR \

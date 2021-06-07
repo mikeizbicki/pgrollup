@@ -207,6 +207,10 @@ CREATE OR REPLACE FUNCTION kll_float_sketch_union(a kll_float_sketch, b kll_floa
     select kll_float_sketch_merge(sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION req_float_sketch_union(a req_float_sketch, b req_float_sketch) RETURNS req_float_sketch AS $$
+    select req_float_sketch_merge(sketch) from (select a as sketch union all select b) t;
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+
 CREATE OR REPLACE FUNCTION frequent_strings_sketch_union(a frequent_strings_sketch, b frequent_strings_sketch) RETURNS frequent_strings_sketch AS $$
     select frequent_strings_sketch_merge(9,sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
@@ -223,6 +227,15 @@ INSERT INTO algebra
     ,'x'
     --,'kll_float_sketch_get_quantile(kll_float_sketch(x),0.5)'
     ),
+    ('req_float_sketch_build'
+    ,'req_float_sketch_build(x)'
+    ,'req_float_sketch'
+    ,'null'
+    ,'req_float_sketch_union(req_float_sketch_build(x),req_float_sketch_build(y))'
+    ,NULL
+    ,'x'
+    --,'req_float_sketch_get_quantile(req_float_sketch(x),0.5)'
+    ),
     ('frequent_strings_sketch_build'
     ,'frequent_strings_sketch_build(x)'
     ,'frequent_strings_sketch'
@@ -230,40 +243,62 @@ INSERT INTO algebra
     ,'frequent_strings_sketch_union(frequent_strings_sketch_build(x),frequent_strings_sketch_build(y))'
     ,NULL
     ,'x'
-    --,'frequent_strings_sketch_result_no_false_negatives(frequent_strings_sketch(x))'
-    );
+    ),
     
-
-    /*
-    -- FIXME: plus doesn't throw an error, but gives really bad results, possibly due to an uncaught error
-    -- FIXME: the datasketches library implements an intersection function, but no negate function;
-    ('theta_sketch'
+    -- FIXME: 
+    -- the datasketches library implements an intersection function, but no negate function;
+    -- this means that deleting from these rollups won't work, but it should
+    ('theta_sketch_build'
     ,'theta_sketch_build(x)'
-    ,'theta_sketch','theta_sketch_build(null::int)'
-    ,'theta_sketch_union(theta_sketch(x),theta_sketch(y))'
+    ,'theta_sketch'
+    ,'null'
+    ,'theta_sketch_union(theta_sketch_build(x),theta_sketch_build(y))'
     ,NULL
-    ,'round(theta_sketch_get_estimate(x))'
+    ,'x'
+    ),
+    ('theta_sketch_distinct'
+    ,'theta_sketch_build(x)'
+    ,'theta_sketch'
+    ,'null'
+    ,'theta_sketch_union(theta_sketch_distinct(x),theta_sketch_distinct(y))'
+    ,NULL
+    ,'theta_sketch_get_estimate(theta_sketch_distinct(x))'
     ),
  
-    -- FIXME: plus throws an error, this is due to a problem in the datasketches library and not something that can be fixed locally
-    ('hll_sketch'
-    ,'hll_sketch_union(hll_sketch_build(x))'
+    ('hll_sketch_build'
+    ,'hll_sketch_build(x)'
     ,'hll_sketch'
-    ,'hll_sketch_build(null::int)'
-    ,'hll_sketch_union(x,y)'
+    ,'null'
+    ,'hll_sketch_union(hll_sketch_build(x),hll_sketch_build(y))'
     ,NULL
-    ,'round(hll_sketch_get_estimate(x))'
+    ,'x'
+    ),
+    ('hll_sketch_distinct'
+    ,'hll_sketch_build(x)'
+    ,'hll_sketch'
+    ,'null'
+    ,'hll_sketch_union(hll_sketch_distinct(x),hll_sketch_distinct(y))'
+    ,NULL
+    ,'hll_sketch_get_estimate(hll_sketch_distinct(x))'
     ),
 
-    -- FIXME: plus throws an error, this is due to a problem in the datasketches library and not something that can be fixed locally
-    ('cpc_sketch'
-    ,'cpc_sketch_union(cpc_sketch_build(x))'
-    ,'cpc_sketch','cpc_sketch_build(null::int)'
-    ,'cpc_sketch_union(x,y)'
+    -- FIXME: cpc generates an error, but the resulting values still seem to be okay
+    ('cpc_sketch_build'
+    ,'cpc_sketch_build(x)'
+    ,'cpc_sketch'
+    ,'null'
+    ,'cpc_sketch_union(cpc_sketch_build(x),cpc_sketch_build(y))'
     ,NULL
-    ,'round(cpc_sketch_get_estimate(x))'
+    ,'x'
+    ),
+    ('cpc_sketch_distinct'
+    ,'cpc_sketch_build(x)'
+    ,'cpc_sketch'
+    ,'null'
+    ,'cpc_sketch_union(cpc_sketch_distinct(x),cpc_sketch_distinct(y))'
+    ,NULL
+    ,'cpc_sketch_get_estimate(cpc_sketch_distinct(x))'
     );
-    */
 
 END IF;
 END
