@@ -215,6 +215,12 @@ CREATE OR REPLACE FUNCTION frequent_strings_sketch_union(a frequent_strings_sket
     select frequent_strings_sketch_merge(9,sketch) from (select a as sketch union all select b) t;
 $$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
 
+CREATE OR REPLACE FUNCTION theta_sketch_empty() RETURNS theta_sketch AS
+$$
+    select theta_sketch_intersection(theta_sketch_build(0::INTEGER),theta_sketch_build(1::INTEGER));
+$$ LANGUAGE 'sql' IMMUTABLE PARALLEL SAFE;
+
+
 INSERT INTO algebra
     (name,agg,type,zero,plus,negate,view)
     VALUES
