@@ -355,7 +355,7 @@ CREATE TABLE pgrollup_rollups (
     table_name TEXT NOT NULL,
     event_id_sequence_name TEXT,
     rollup_column TEXT,
-    sql TEXT NOT NULL,
+    sql TEXT,
     mode TEXT NOT NULL,
     last_aggregated_id BIGINT DEFAULT 0,
     PRIMARY KEY (rollup_name,table_alias)
@@ -439,6 +439,7 @@ AS $function$
 DECLARE
     table_to_lock regclass;
 BEGIN
+    RAISE DEBUG 'incremental_rollup_window';
     /*
      * Perform aggregation from the last aggregated ID + 1 up to the last committed ID.
      * We do a SELECT .. FOR UPDATE on the row in the rollup table to prevent
@@ -455,6 +456,7 @@ BEGIN
     WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
       AND pgrollup_rollups.table_alias = incremental_rollup_window.table_alias 
     FOR UPDATE;
+    RAISE DEBUG 'incremental_rollup_window 2';
 
     IF NOT FOUND THEN
         RAISE 'rollup ''%'' is not in pgrollup_rollups', rollup_name;
@@ -487,6 +489,7 @@ BEGIN
         EXCEPTION WHEN OTHERS THEN
         END;
     END IF;
+    RAISE DEBUG 'incremental_rollup_window 3';
 
     /*
      * Remember the end of the window to continue from there next time.
@@ -520,7 +523,10 @@ DECLARE
     mode text;
     start_id bigint;
     end_id bigint;
+    event_id_sequence_name TEXT;
 BEGIN
+    RAISE DEBUG 'do_rollup';
+
     -- if no rollup_name is provided,
     -- then we'll do a rollup on all of the tables
     IF rollup_name IS NULL THEN
@@ -553,12 +559,26 @@ BEGIN
         RETURN;
     END IF;
 
+    -- return null if do_rollup was called on a rollup without a sequence
+    SELECT pgrollup_rollups.event_id_sequence_name
+    INTO event_id_sequence_name
+    FROM pgrollup_rollups
+    WHERE pgrollup_rollups.rollup_name=do_rollup.rollup_name
+      AND pgrollup_rollups.table_alias=do_rollup.table_alias;
+    IF event_id_sequence_name IS NULL THEN
+        RAISE WARNING 'event_id_sequence_name is null';
+        RETURN; 
+    ELSE
+        RAISE DEBUG 'do_rollup: event_id_sequence_name is %', event_id_sequence_name;
+    END IF;
+
     /* sleeping is how cron ensures that the jobs are staggered in time */
     PERFORM pg_sleep(delay_seconds);
 
     /* determine which page views we can safely aggregate */
     SELECT window_start, window_end INTO start_id, end_id
     FROM incremental_rollup_window(rollup_name,table_alias,max_rollup_size,force_safe);
+    RAISE DEBUG 'do_rollup: incremental_rollup_window done';
 
     /* exit early if there are no new page views to aggregate */
     IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN 
@@ -568,6 +588,7 @@ BEGIN
 
     /* this is the new code that gets the rollup command from the table
      * and executes it */
+    RAISE DEBUG 'do_rollup: execute sql';
     SELECT pgrollup_rollups.sql 
     INTO sql_command
     FROM pgrollup_rollups 
@@ -946,10 +967,12 @@ CREATE OR REPLACE FUNCTION rollup_mode(
 )
 RETURNS VOID AS $func$
     
+    plpy.debug('rollup_mode')
     sql = (f"select * from pgrollup_rollups where rollup_name='{rollup_name}'")
     rows = list(plpy.execute(sql))
 
-    for pgrollup in rows:
+    for i,pgrollup in enumerate(rows):
+        plpy.debug('rollup_mode: row i='+str(i))
         if mode != 'trigger' and pgrollup['event_id_sequence_name'] is None:
             plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
 
@@ -1010,14 +1033,18 @@ RETURNS VOID AS $func$
             # ideally, it should be set automatically for each rollup and not hard coded.
 
         if mode=='trigger':
+            plpy.debug('rollup_mode: trigger')
 
             # first we do a manual rollup to ensure that the rollup table is up to date
             if pgrollup['event_id_sequence_name'] is not None:
+                plpy.debug("rollup_mode: pgrollup['event_id_sequence_name']="+str(pgrollup['event_id_sequence_name']))
+
                 plpy.execute(f"""
                     select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
                     """)
 
             # next we create triggers
+            plpy.debug('rollup_mode: create_trigger')
             sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pgrollup['table_alias']+'();'
             plpy.execute(sql)
 

@@ -9,6 +9,17 @@ ViewKey = collections.namedtuple('ViewKey', ['value','name'])
 Algebra = collections.namedtuple('Algebra', ['view','agg','hom','type','zero','plus','negate'])
 
 
+
+def _null_wrap_str(s):
+    '''
+    This helper function simplifies some code that can be a string or NULL.
+    '''
+    if s:
+        return "'"+s+"'"
+    else:
+        return 'NULL'
+    
+
 def _alias_joininfos(joininfos, aliases):
     '''
     FIXME:
@@ -354,7 +365,6 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         #suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
         return self._sub_columns(suby,columns)
 
-
     def create_manualrollup(self):
         manualrollups = []
         for joininfo in self.joininfos:
@@ -376,7 +386,10 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 +'''
                 END;
                 $$;
-                '''+
+                ''')
+            else:
+                function_name = None
+            manualrollups.append(
                 f'''INSERT INTO pgrollup_rollups 
                     ( rollup_name
                     , table_alias
@@ -390,9 +403,9 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                     ( '{self.rollup_name}'
                     , '{joininfo['table_alias']}'
                     , '{joininfo['table_name']}'
-                    , '{joininfo['rollup_column'] or 'NULL' }'
-                    , '{joininfo['event_id_sequence_name'] or 'NULL' }'
-                    , '{function_name}'
+                    , {_null_wrap_str(joininfo['rollup_column'])}
+                    , {_null_wrap_str(joininfo['event_id_sequence_name'])}
+                    , {_null_wrap_str(function_name)}
                     , 'init'
                     );
                 ''')
