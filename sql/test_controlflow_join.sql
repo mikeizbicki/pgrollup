@@ -81,8 +81,6 @@ CREATE MATERIALIZED VIEW testjoin_rollup1 AS (
     GROUP BY name
 );
 
-select pgrollup_convert_all();
-
 select pgrollup_parse($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup2 AS (
     SELECT

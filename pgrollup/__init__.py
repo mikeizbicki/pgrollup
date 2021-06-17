@@ -190,9 +190,6 @@ class Rollup:
             if len(groups)==0:
                 return [ l[1:] for l in ls ]
             else:
-                #if groups[0].unnest:
-                    #return generate_binary(groups[1:], [l + '1' for l in ls])
-                #else:
                 return generate_binary(groups[1:], [l + '0' for l in ls] + [l + '1' for l in ls])
         self.binaries = generate_binary(groups,' ')
 
@@ -361,8 +358,6 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         '''
         subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)',xtable+r'."\1('+xval+')"',text)
         suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)',ytable+r'."\1('+yval+')"',subx)
-        #subx = re.sub(r'\b([a-zA-Z0-9_]+)\(x\)','COALESCE('+xtable+r'."\1('+xval+')",'+xzero+')',text)
-        #suby = re.sub(r'\b([a-zA-Z0-9_]+)\(y\)','COALESCE('+ytable+r'."\1('+yval+')",'+yzero+')',subx)
         return self._sub_columns(suby,columns)
 
     def create_manualrollup(self):
@@ -476,27 +471,11 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             END;
             $$;
             '''
-            #for table_name,joininfos in self.joininfos_merged
             for joininfo in self.joininfos
             ]))
 
 
     def create_joinsubtractor(self, source, aliases=[], negate=False):
-        #for alias_index,joininfo in enumerate(self.joininfos):
-            #if joininfo['table_alias']==aliases[0]:
-                #break
-        #from_clause = (
-                #''.join([
-                #'''
-                #''' + (joininfo['join_type']) + ' ' 
-                    #+ (joininfo['table_name'] 
-                      #)
-                    #+ ' AS ' + joininfo['table_alias']
-                    #+ ' ' + joininfo['condition']
-                #for joininfo in self.joininfos[:alias_index+1]
-                #])
-                #)
-        #new_where = self.joininfos[alias_index]['table_alias']+'.num1 in (SELECT '+self.joininfos[alias_index-1]['table_alias']+'.num1 ' + from_clause + ')'
         new_where = 'num1 in (SELECT num1 FROM ' + source + ' t )'
         return (
                 'SELECT'+

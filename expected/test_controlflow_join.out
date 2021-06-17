@@ -75,12 +75,6 @@ CREATE MATERIALIZED VIEW testjoin_rollup1 AS (
     JOIN testjoin2 AS t2 USING (id)
     GROUP BY name
 );
-select pgrollup_convert_all();
- pgrollup_convert_all 
-----------------------
- 
-(1 row)
-
 select pgrollup_parse($$
 CREATE INCREMENTAL MATERIALIZED VIEW testjoin_rollup2 AS (
     SELECT

@@ -231,7 +231,6 @@ INSERT INTO algebra
     ,'kll_float_sketch_union(kll_float_sketch_build(x),kll_float_sketch_build(y))'
     ,NULL
     ,'x'
-    --,'kll_float_sketch_get_quantile(kll_float_sketch(x),0.5)'
     ),
     ('req_float_sketch_build'
     ,'req_float_sketch_build(x)'
@@ -240,7 +239,6 @@ INSERT INTO algebra
     ,'req_float_sketch_union(req_float_sketch_build(x),req_float_sketch_build(y))'
     ,NULL
     ,'x'
-    --,'req_float_sketch_get_quantile(req_float_sketch(x),0.5)'
     ),
     ('frequent_strings_sketch_build'
     ,'frequent_strings_sketch_build(x)'
@@ -449,7 +447,6 @@ BEGIN
     -- the COALESCEs here are assuming that the sequence is positive;
     -- that's the default value, but these can be changed;
     -- the *REALLY* correct thing to do here is to extract the minimum value from the sequence and use that
-    --SELECT table_name, COALESCE(last_aggregated_id+1,0), LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,COALESCE(pg_sequence_last_value(event_id_sequence_name),0))
     SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
     FROM pgrollup_rollups
@@ -602,38 +599,12 @@ END;
 $function$;
 
 
-CREATE OR REPLACE FUNCTION pgrollup_convert_all(
-    dry_run BOOLEAN DEFAULT FALSE,
-    mode TEXT DEFAULT NULL
-)
-RETURNS VOID AS $$
-    sql="""
-    SELECT matviewname
-    FROM pg_matviews;
-    """
-    rows = plpy.execute(sql)
-    for row in rows:
-        sql="""
-        SELECT pgrollup_convert('"""+row['matviewname']+"',"+str(dry_run)+","+('NULL' if not mode else mode)+""");
-        """
-        plpy.execute(sql)
-$$
-LANGUAGE plpython3u;
-
-
 CREATE OR REPLACE FUNCTION pgrollup_convert(
     view_name REGCLASS,
     dry_run BOOLEAN DEFAULT FALSE,
     mode TEXT DEFAULT NULL
 )
 RETURNS VOID AS $$
-    sql="""
-    SELECT view_definition
-    FROM information_schema.views
-    WHERE table_name = '"""+view_name+"""';
-    """
-    #rows = plpy.execute(sql)
-    #view_definition = rows[0]['view_definition']
     sql="""
     SELECT definition,tablespace
     FROM pg_matviews
@@ -1056,7 +1027,6 @@ LANGUAGE plpython3u;
 CREATE OR REPLACE FUNCTION drop_rollup(rollup_name REGCLASS)
 RETURNS VOID AS $$
     import pgrollup
-    #sql = pgrollup.drop_rollup_str(rollup_name)
     sql = 'select pgrollup_drop__'+rollup_name+'();'
     plpy.execute(sql)
 $$
