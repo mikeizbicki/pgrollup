@@ -59,3 +59,4 @@ select * from testinternal_internal1;
 select assert_rollup('testinternal_internal1');
 select assert_rollup('testinternal_internal2');
 
+drop table testinternal cascade;

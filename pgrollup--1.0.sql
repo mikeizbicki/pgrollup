@@ -873,11 +873,18 @@ RETURNS TEXT AS $$
             rollup_column = None
             if len(pks) == 0:
                 plpy.notice(f'no primary key in table {table_name}')
-            elif len(pks) > 1:
-                plpy.notice(f'multi-column primary key in table {table_name}')
             else:
-                event_id_sequence_name = f"{table_name}_{pks[0]['pk']}_seq"
-                rollup_column = pks[0]['pk']
+                found_seq = False
+                for pk in pks:
+                    event_id_sequence_name = f"{table_name}_{pk['pk']}_seq"
+                    rollup_column = pk['pk']
+                    sql = f"SELECT relname FROM pg_class WHERE relkind = 'S' and relname='{event_id_sequence_name}';";
+                    matches = list(plpy.execute(sql))
+                    if len(matches) > 0:
+                        found_seq = True
+                        break
+                if found_seq:
+                    plpy.notice(f'rollup_column={rollup_column}, event_id_sequence_name={event_id_sequence_name }')
         joininfo['rollup_column'] = rollup_column
         joininfo['event_id_sequence_name'] = event_id_sequence_name
 

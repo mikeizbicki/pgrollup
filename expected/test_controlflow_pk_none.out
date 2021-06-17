@@ -33,19 +33,17 @@ insert into test_nopk (name,num) values
     (NULL, NULL),
     (NULL, NULL),
     (NULL, NULL);
-create materialized view test_nopk_rollup1 as (
+CREATE ACCESS METHOD pgrollup TYPE TABLE HANDLER heap_tableam_handler;
+create materialized view test_nopk_rollup1 using pgrollup as (
     select name,count(*)
     from test_nopk
     group by name
 );
 select * from pgrollup_rollups;
-      rollup_name       | table_alias  |  table_name  | event_id_sequence_name | rollup_column |                           sql                            |  mode   | last_aggregated_id 
-------------------------+--------------+--------------+------------------------+---------------+----------------------------------------------------------+---------+--------------------
- testinternal_internal1 | testinternal | testinternal | testinternal_id_seq    | id            | pgrollup_manual_testinternal_internal1_raw__testinternal | trigger |                 26
- testinternal_internal2 | testinternal | testinternal | testinternal_id_seq    | id            | pgrollup_manual_testinternal_internal2_raw__testinternal | trigger |                 26
- testid_rollup1         | testid       | testid       | testid_id_seq          | id            | pgrollup_manual_testid_rollup1_raw__testid               | manual  |                 52
- test_nopk_rollup1      | test_nopk    | test_nopk    |                        |               |                                                          | trigger |                  0
-(4 rows)
+    rollup_name    | table_alias | table_name | event_id_sequence_name | rollup_column | sql |  mode   | last_aggregated_id 
+-------------------+-------------+------------+------------------------+---------------+-----+---------+--------------------
+ test_nopk_rollup1 | test_nopk   | test_nopk  |                        |               |     | trigger |                  0
+(1 row)
 
 select assert_rollup('test_nopk_rollup1');
  assert_rollup 

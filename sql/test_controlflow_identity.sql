@@ -148,4 +148,5 @@ insert into testid2 (name,num) values
 select do_rollup('testid2_rollup1');
 select assert_rollup('testid2_rollup1');
 
+drop table testid cascade;
 drop table testid2 cascade;

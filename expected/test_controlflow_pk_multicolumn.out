@@ -1,0 +1,111 @@
+SET client_min_messages TO WARNING;
+create or replace language plpython3u;
+create extension if not exists pgrollup;
+create table test_multipk (
+    id serial,
+    name text,
+    num int,
+    primary key(name, id)
+);
+insert into test_multipk (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5);
+create materialized view test_multipk_rollup1 as (
+    select name,count(*)
+    from test_multipk
+    group by name
+);
+select * from pgrollup_rollups;
+     rollup_name      | table_alias  |  table_name  | event_id_sequence_name | rollup_column |                          sql                           |  mode   | last_aggregated_id 
+----------------------+--------------+--------------+------------------------+---------------+--------------------------------------------------------+---------+--------------------
+ test_multipk_rollup1 | test_multipk | test_multipk | test_multipk_id_seq    | id            | pgrollup_manual_test_multipk_rollup1_raw__test_multipk | trigger |                 15
+(1 row)
+
+select assert_rollup('test_multipk_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+insert into test_multipk (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5);
+select assert_rollup('test_multipk_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select rollup_mode('test_multipk_rollup1','manual');
+ rollup_mode 
+-------------
+ 
+(1 row)
+
+insert into test_multipk (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5);
+select * from pgrollup_rollups;
+     rollup_name      | table_alias  |  table_name  | event_id_sequence_name | rollup_column |                          sql                           |  mode  | last_aggregated_id 
+----------------------+--------------+--------------+------------------------+---------------+--------------------------------------------------------+--------+--------------------
+ test_multipk_rollup1 | test_multipk | test_multipk | test_multipk_id_seq    | id            | pgrollup_manual_test_multipk_rollup1_raw__test_multipk | manual |                 30
+(1 row)
+
+select do_rollup('test_multipk_rollup1');
+                 do_rollup                 
+-------------------------------------------
+ (test_multipk_rollup1,test_multipk,31,45)
+(1 row)
+
+select * from pgrollup_rollups;
+     rollup_name      | table_alias  |  table_name  | event_id_sequence_name | rollup_column |                          sql                           |  mode  | last_aggregated_id 
+----------------------+--------------+--------------+------------------------+---------------+--------------------------------------------------------+--------+--------------------
+ test_multipk_rollup1 | test_multipk | test_multipk | test_multipk_id_seq    | id            | pgrollup_manual_test_multipk_rollup1_raw__test_multipk | manual |                 45
+(1 row)
+
+select assert_rollup('test_multipk_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+drop table test_multipk cascade;

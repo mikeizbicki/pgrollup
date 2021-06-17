@@ -36,7 +36,9 @@ insert into test_nopk (name,num) values
     (NULL, NULL),
     (NULL, NULL);
 
-create materialized view test_nopk_rollup1 as (
+CREATE ACCESS METHOD pgrollup TYPE TABLE HANDLER heap_tableam_handler;
+
+create materialized view test_nopk_rollup1 using pgrollup as (
     select name,count(*)
     from test_nopk
     group by name
@@ -85,4 +87,3 @@ select assert_rollup('test_nopk_rollup1');
 select assert_rollup('test_nopk_rollup1');
 
 drop table test_nopk cascade;
-

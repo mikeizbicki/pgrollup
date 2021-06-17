@@ -165,4 +165,5 @@ select assert_rollup('testid2_rollup1');
  
 (1 row)
 
+drop table testid cascade;
 drop table testid2 cascade;

@@ -86,3 +86,4 @@ select assert_rollup('testinternal_internal2');
  
 (1 row)
 
+drop table testinternal cascade;
