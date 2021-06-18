@@ -731,6 +731,24 @@ RETURNS TEXT AS $$
         row = plpy.execute(sql)[0]
         return row
 
+    def get_nullable(expr):
+        if "'" in expr:
+            return True
+        expr = re.sub(r'^[a-zA-Z0-9_]+\.', '', expr)
+        plpy.debug(f'expr={expr}')
+        for joininfo in joininfos:
+            sql=f'''
+            SELECT not pg_attribute.attnotnull AS nullable
+            FROM pg_class
+            JOIN pg_attribute ON pg_attribute.attrelid = pg_class.oid
+            WHERE pg_class.relname = '{joininfo['table_name']}'
+              AND pg_attribute.attname ilike '{expr}';
+            '''
+            attrs = list(plpy.execute(sql))
+            if len(attrs) > 0:
+                return attrs[0]['nullable']
+        return True
+
 
     # get a list of all algebras
     sql = f'select * from algebra;'
@@ -759,7 +777,7 @@ RETURNS TEXT AS $$
 
     groups_list = []
     for value,name in groups:
-        groups_list.append(pgrollup.Key(value,get_type(value),name,None))
+        groups_list.append(pgrollup.Key(value,get_type(value),name,None,get_nullable(value)))
 
     # columns_view_list contains the columns that will be included in the created view
     columns_view_list = []
@@ -775,20 +793,15 @@ RETURNS TEXT AS $$
         else:
             new_groups.append((value,name))
 
-    '''
-    groups_list = []
-    for value,name in groups:
-        groups_list.append(pgrollup.Key(value,get_type(value),name,None))
-    '''
     groups_list = []
     for value,name in new_groups:
-        groups_list.append(pgrollup.Key(value,get_type(value),name,None))
+        groups_list.append(pgrollup.Key(value,get_type(value),name,None,get_nullable(value)))
     for value,name in groups:
         value_groups = [ value for value,name in new_groups]
         valuep_groups = [ '('+value+')' for value,name in new_groups]
         name_groups = [ name for value,name in new_groups]
         if '('+value+')' not in value_groups and value not in valuep_groups and value not in value_groups and name not in name_groups and joininfos[0]['table_name']+'.'+name not in value_groups and joininfos[0]['table_name']+'.'+name not in name_groups:
-            groups_list.append(pgrollup.Key(value,get_type(value),name,None))
+            groups_list.append(pgrollup.Key(value,get_type(value),name,None,get_nullable(value)))
 
     for value,name in columns_minus_groups:
         value_substitute_views = pgrollup.parsing_functions.substitute_views(value, all_algebras)
@@ -803,17 +816,20 @@ RETURNS TEXT AS $$
     for value in raw_columns:
         # extract key info
         name = '"'+value+'"'
-
         algebra = value[:value.find("(")]
         expr = value[value.find("(")+1:value.rfind(")")]
         type = get_type(expr)
+        nullable = get_nullable(value)
+
+        plpy.debug(f'nullable={nullable}')
+        plpy.debug(f'len(raw_columns)={len(raw_columns)}')
 
         # get the algebra dictionary and key
         sql = f"select * from algebra where name='{algebra}';"
         res = list(plpy.execute(sql))
         if len(res)==1:
             algebra_dictionary = res[0]
-            key = pgrollup.Key(expr,type,name,algebra_dictionary)
+            key = pgrollup.Key(expr,type,name,algebra_dictionary,nullable)
         else:
             plpy.error(f'algbera {algebra} not found in the algebra table')
 

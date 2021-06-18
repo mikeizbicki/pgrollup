@@ -1,0 +1,430 @@
+SET client_min_messages TO WARNING;
+create or replace language plpython3u;
+create extension if not exists pgrollup;
+create table test1 (
+    id serial primary key,
+    name text,
+    num int not null
+);
+create table test2 (
+    id serial primary key,
+    name text not null,
+    num int
+);
+create table test3 (
+    id serial primary key,
+    name text not null,
+    num int not null
+);
+insert into test1 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('dave', 4),
+    ('elliot', 5);
+insert into test2 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('dave', 4),
+    ('elliot', 5);
+insert into test3 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('dave', 4),
+    ('elliot', 5);
+create materialized view test1_rollup1 as (
+    select count(*)
+    from test1
+);
+create materialized view test1_rollup2 as (
+    select name,count(*)
+    from test1
+    group by name
+);
+create materialized view test1_rollup3 as (
+    select num,count(*)
+    from test1
+    group by num
+);
+create materialized view test1_rollup4 as (
+    select name,num,count(*)
+    from test1
+    group by name,num
+);
+create materialized view test2_rollup1 as (
+    select count(*)
+    from test2
+);
+create materialized view test2_rollup2 as (
+    select name,count(*)
+    from test2
+    group by name
+);
+create materialized view test2_rollup3 as (
+    select num,count(*)
+    from test2
+    group by num
+);
+create materialized view test2_rollup4 as (
+    select name,num,count(*)
+    from test2
+    group by name,num
+);
+create materialized view test3_rollup1 as (
+    select count(*)
+    from test3
+);
+create materialized view test3_rollup2 as (
+    select name,count(*)
+    from test3
+    group by name
+);
+create materialized view test3_rollup3 as (
+    select num,count(*)
+    from test3
+    group by num
+);
+create materialized view test3_rollup4 as (
+    select name,num,count(*)
+    from test3
+    group by name,num
+);
+-- the following psql command prints table information;
+-- the important thing is that it will display whether a column is nullable or not,
+-- and this should be set automatically for us by pgrollup
+\d test1_rollup1_raw
+          Table "public.test1_rollup1_raw"
+  Column  |  Type   | Collation | Nullable | Default 
+----------+---------+-----------+----------+---------
+ count(*) | integer |           |          | 
+ raw_true | boolean |           | not null | true
+Indexes:
+    "test1_rollup1_raw_raw_true_key" UNIQUE CONSTRAINT, btree (raw_true)
+
+\d test1_rollup2_raw
+           Table "public.test1_rollup2_raw"
+   Column   |  Type   | Collation | Nullable | Default 
+------------+---------+-----------+----------+---------
+ count(*)   | integer |           |          | 
+ test1.name | text    |           |          | 
+Indexes:
+    "test1_rollup2_index_0_notnull" UNIQUE, btree (("test1.name" IS NULL)) WHERE true AND "test1.name" IS NULL
+    "test1_rollup2_index_1_notnull" UNIQUE, btree ("test1.name")
+
+\d test1_rollup3_raw
+           Table "public.test1_rollup3_raw"
+  Column   |  Type   | Collation | Nullable | Default 
+-----------+---------+-----------+----------+---------
+ count(*)  | integer |           |          | 
+ test1.num | integer |           | not null | 
+Indexes:
+    "test1_rollup3_index_1_notnull" UNIQUE, btree ("test1.num")
+
+\d test1_rollup4_raw
+           Table "public.test1_rollup4_raw"
+   Column   |  Type   | Collation | Nullable | Default 
+------------+---------+-----------+----------+---------
+ count(*)   | integer |           |          | 
+ test1.name | text    |           |          | 
+ test1.num  | integer |           | not null | 
+Indexes:
+    "test1_rollup4_index_01_notnull" UNIQUE, btree (("test1.name" IS NULL), "test1.num") WHERE true AND "test1.name" IS NULL
+    "test1_rollup4_index_11_notnull" UNIQUE, btree ("test1.name", "test1.num")
+
+\d test2_rollup1_raw
+          Table "public.test2_rollup1_raw"
+  Column  |  Type   | Collation | Nullable | Default 
+----------+---------+-----------+----------+---------
+ count(*) | integer |           |          | 
+ raw_true | boolean |           | not null | true
+Indexes:
+    "test2_rollup1_raw_raw_true_key" UNIQUE CONSTRAINT, btree (raw_true)
+
+\d test2_rollup2_raw
+           Table "public.test2_rollup2_raw"
+   Column   |  Type   | Collation | Nullable | Default 
+------------+---------+-----------+----------+---------
+ count(*)   | integer |           |          | 
+ test2.name | text    |           | not null | 
+Indexes:
+    "test2_rollup2_index_1_notnull" UNIQUE, btree ("test2.name")
+
+\d test2_rollup3_raw
+           Table "public.test2_rollup3_raw"
+  Column   |  Type   | Collation | Nullable | Default 
+-----------+---------+-----------+----------+---------
+ count(*)  | integer |           |          | 
+ test2.num | integer |           |          | 
+Indexes:
+    "test2_rollup3_index_0_notnull" UNIQUE, btree (("test2.num" IS NULL)) WHERE true AND "test2.num" IS NULL
+    "test2_rollup3_index_1_notnull" UNIQUE, btree ("test2.num")
+
+\d test2_rollup4_raw
+           Table "public.test2_rollup4_raw"
+   Column   |  Type   | Collation | Nullable | Default 
+------------+---------+-----------+----------+---------
+ count(*)   | integer |           |          | 
+ test2.name | text    |           | not null | 
+ test2.num  | integer |           |          | 
+Indexes:
+    "test2_rollup4_index_10_notnull" UNIQUE, btree ("test2.name", ("test2.num" IS NULL)) WHERE true AND "test2.num" IS NULL
+    "test2_rollup4_index_11_notnull" UNIQUE, btree ("test2.name", "test2.num")
+
+\d test3_rollup1_raw
+          Table "public.test3_rollup1_raw"
+  Column  |  Type   | Collation | Nullable | Default 
+----------+---------+-----------+----------+---------
+ count(*) | integer |           |          | 
+ raw_true | boolean |           | not null | true
+Indexes:
+    "test3_rollup1_raw_raw_true_key" UNIQUE CONSTRAINT, btree (raw_true)
+
+\d test3_rollup2_raw
+           Table "public.test3_rollup2_raw"
+   Column   |  Type   | Collation | Nullable | Default 
+------------+---------+-----------+----------+---------
+ count(*)   | integer |           |          | 
+ test3.name | text    |           | not null | 
+Indexes:
+    "test3_rollup2_index_1_notnull" UNIQUE, btree ("test3.name")
+
+\d test3_rollup3_raw
+           Table "public.test3_rollup3_raw"
+  Column   |  Type   | Collation | Nullable | Default 
+-----------+---------+-----------+----------+---------
+ count(*)  | integer |           |          | 
+ test3.num | integer |           | not null | 
+Indexes:
+    "test3_rollup3_index_1_notnull" UNIQUE, btree ("test3.num")
+
+\d test3_rollup4_raw
+           Table "public.test3_rollup4_raw"
+   Column   |  Type   | Collation | Nullable | Default 
+------------+---------+-----------+----------+---------
+ count(*)   | integer |           |          | 
+ test3.name | text    |           | not null | 
+ test3.num  | integer |           | not null | 
+Indexes:
+    "test3_rollup4_index_11_notnull" UNIQUE, btree ("test3.name", "test3.num")
+
+select assert_rollup('test1_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test1_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test1_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test1_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+insert into test1 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('dave', 4),
+    ('elliot', 5);
+insert into test2 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('dave', 4),
+    ('elliot', 5);
+insert into test3 (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('dave', 4),
+    ('elliot', 5);
+select assert_rollup('test1_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test1_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test1_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test1_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test2_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup3');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test3_rollup4');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+drop table test1 cascade;
+drop table test2 cascade;
+drop table test3 cascade;

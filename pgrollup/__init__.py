@@ -2,7 +2,7 @@ import collections
 import copy
 import re
 
-Key = collections.namedtuple('Key', ['value','type','name','algebra'])
+Key = collections.namedtuple('Key', ['value','type','name','algebra','nullable'])
 
 ViewKey = collections.namedtuple('ViewKey', ['value','name'])
 
@@ -167,7 +167,7 @@ class Rollup:
         for joininfo in joininfos:
             self.joininfos_merged.get(joininfo['table_name'],[]).append(joininfo)
 
-        self.groups = [Key(k.value, k.type, ''+k.name if k.name[0]!='"' else k.name,None) for k in groups]
+        self.groups = [Key(k.value, k.type, ''+k.name if k.name[0]!='"' else k.name,None,k.nullable) for k in groups]
         self.columns_raw = sorted(columns_raw, key=lambda column: column.type['typlen'], reverse=True)
         self.columns_view = columns_view
         self.where_clause = where_clause if where_clause else 'TRUE'
@@ -190,7 +190,10 @@ class Rollup:
             if len(groups)==0:
                 return [ l[1:] for l in ls ]
             else:
-                return generate_binary(groups[1:], [l + '0' for l in ls] + [l + '1' for l in ls])
+                if groups[0].nullable:
+                    return generate_binary(groups[1:], [l + '0' for l in ls] + [l + '1' for l in ls])
+                else:
+                    return generate_binary(groups[1:],                         [l + '1' for l in ls])
         self.binaries = generate_binary(groups,' ')
 
 
@@ -208,7 +211,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
     )+
     (
     ''',
-    '''.join([key.name + ' ' + key.type['typname'] for key in self.groups])
+    '''.join([key.name + ' ' + key.type['typname'] + (' NULL' if key.nullable else ' NOT NULL') for key in self.groups])
     if len(self.groups)>0
     else '''raw_true BOOLEAN DEFAULT TRUE UNIQUE NOT NULL''' )+
     '''
@@ -742,16 +745,16 @@ if __name__ == '__main__':
             tablespace='tablespacename',
             rollup='rollupname',
             groups=[
-                Key('lower(country)',{'typname':'text','typlen':-1},'country',None),
-                Key('language',{'typname':'text','typlen':-1},'language',None),
+                Key('lower(country)',{'typname':'text','typlen':-1},'country',None,None),
+                Key('language',{'typname':'text','typlen':-1},'language',None,None),
                 ],
             columns_view=[
                 ViewKey('name','name'),
                 ViewKey('userid','userid'),
                 ],
             columns_raw=[
-                Key('name',{'typname':'text','typlen':-1},'name',algebras['count']),
-                Key('userid',{'typname':'int','typlen':4},'userid',algebras['count']),
+                Key('name',{'typname':'text','typlen':-1},'name',algebras['count'],False),
+                Key('userid',{'typname':'int','typlen':4},'userid',algebras['count'],True),
                 ],
             joininfos=[{
                     'join_type': 'FROM',
