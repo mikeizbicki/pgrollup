@@ -20,12 +20,6 @@ select create_distributed_table('test', 'name');
  
 (1 row)
 
-select * from pg_dist_partition;
- logicalrelid | partmethod |                                                          partkey                                                           | colocationid | repmodel 
---------------+------------+----------------------------------------------------------------------------------------------------------------------------+--------------+----------
- test         | h          | {VAR :varno 1 :varattno 2 :vartype 25 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location -1} |            1 | c
-(1 row)
-
 /*
  * FIXME: a citus table must be empty when we create the rollup table.
  *

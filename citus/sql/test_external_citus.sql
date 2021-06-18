@@ -18,8 +18,6 @@ create table test (
 );
 select create_distributed_table('test', 'name');
 
-select * from pg_dist_partition;
-
 /*
  * FIXME: a citus table must be empty when we create the rollup table.
  *
