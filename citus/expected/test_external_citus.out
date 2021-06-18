@@ -1,0 +1,249 @@
+SET client_min_messages TO WARNING;
+create extension citus;
+create extension plpython3u;
+create extension pgrollup;
+-- FIXME:
+-- citus does not work with triggers, and so the default trigger mode does not work;
+-- pgrollup should be smart enough to default to manual mode when creating the triggers fails;
+-- since it's not, we must manually specify the default mode here;
+-- you cannot specify the mode after creating the rollup because rollup creation will fail
+update pgrollup_settings set value='manual' where name='default_mode';
+create table test (
+    id serial,
+    name text,
+    num int,
+    primary key (name,id)
+);
+select create_distributed_table('test', 'name');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+select * from pg_dist_partition;
+ logicalrelid | partmethod |                                                          partkey                                                           | colocationid | repmodel 
+--------------+------------+----------------------------------------------------------------------------------------------------------------------------+--------------+----------
+ test         | h          | {VAR :varno 1 :varattno 2 :vartype 25 :vartypmod -1 :varcollid 100 :varlevelsup 0 :varnosyn 1 :varattnosyn 2 :location -1} |            1 | c
+(1 row)
+
+/*
+ * FIXME: a citus table must be empty when we create the rollup table.
+ *
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5);
+*/
+-- for each rollup below, we create two versions;
+-- the first is a normal postgresql table,
+-- and the second will be a distributed table managed by citus
+CREATE MATERIALIZED VIEW test_rollup1 AS (
+    SELECT
+        name AS name,
+        sum(num) as sum,
+        count(*) as count_all,
+        count(num),
+        max(num),
+        min(num)
+    FROM test
+    GROUP BY name
+);
+CREATE MATERIALIZED VIEW test_rollup1b AS (
+    SELECT
+        name AS name,
+        sum(num) as sum,
+        count(*) as count_all,
+        count(num),
+        max(num),
+        min(num)
+    FROM test
+    GROUP BY name
+);
+select create_distributed_table('test_rollup1b_raw', 'test.name');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+CREATE MATERIALIZED VIEW test_rollup2 AS (
+    SELECT
+        name AS name,
+        count(name) AS count_name,
+        count(num)  AS count_num
+    FROM test
+    GROUP BY name
+);
+CREATE MATERIALIZED VIEW test_rollup2b AS (
+    SELECT
+        name AS name,
+        count(name) AS count_name,
+        count(num)  AS count_num
+    FROM test
+    GROUP BY name
+);
+select create_distributed_table('test_rollup2b_raw', 'test.name');
+ create_distributed_table 
+--------------------------
+ 
+(1 row)
+
+select * from pgrollup_rollups;
+  rollup_name  | table_alias | table_name | event_id_sequence_name | rollup_column |                   sql                   |  mode  | last_aggregated_id 
+---------------+-------------+------------+------------------------+---------------+-----------------------------------------+--------+--------------------
+ test_rollup1  | test        | test       | test_id_seq            | id            | pgrollup_manual_test_rollup1_raw__test  | manual |                  0
+ test_rollup1b | test        | test       | test_id_seq            | id            | pgrollup_manual_test_rollup1b_raw__test | manual |                  0
+ test_rollup2  | test        | test       | test_id_seq            | id            | pgrollup_manual_test_rollup2_raw__test  | manual |                  0
+ test_rollup2b | test        | test       | test_id_seq            | id            | pgrollup_manual_test_rollup2b_raw__test | manual |                  0
+(4 rows)
+
+select assert_rollup('test_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('bill', 5),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 1),
+    ('charlie', 3),
+    ('charlie', NULL),
+    ('dave', 4),
+    ('elliot', 5);
+select do_rollup('test_rollup1');
+        do_rollup         
+--------------------------
+ (test_rollup1,test,1,15)
+(1 row)
+
+select do_rollup('test_rollup2');
+        do_rollup         
+--------------------------
+ (test_rollup2,test,1,15)
+(1 row)
+
+select assert_rollup('test_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', NULL),
+    ('alice', 3),
+    ('alice', 4),
+    ('alice', 5),
+    ('bill', NULL),
+    ('bill', NULL),
+    ('bill', 5),
+    ('charlie', NULL),
+    ('charlie', 1),
+    ('charlie', NULL),
+    ('elliot', 5);
+select do_rollup('test_rollup1');
+         do_rollup         
+---------------------------
+ (test_rollup1,test,16,27)
+(1 row)
+
+select do_rollup('test_rollup2');
+         do_rollup         
+---------------------------
+ (test_rollup2,test,16,27)
+(1 row)
+
+select assert_rollup('test_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+insert into test (name,num) values
+    ('alice', 1),
+    ('alice', 2),
+    ('alice', 3),
+    ('elliot', 5);
+select do_rollup('test_rollup1');
+         do_rollup         
+---------------------------
+ (test_rollup1,test,28,31)
+(1 row)
+
+select do_rollup('test_rollup2');
+         do_rollup         
+---------------------------
+ (test_rollup2,test,28,31)
+(1 row)
+
+select assert_rollup('test_rollup1');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select assert_rollup('test_rollup2');
+ assert_rollup 
+---------------
+ 
+(1 row)
+
+select * from test_rollup1 order by "test.name";
+ sum | count_all | count | max | min | test.name 
+-----+-----------+-------+-----+-----+-----------
+  34 |        13 |    12 |   5 |   1 | alice
+  20 |         6 |     4 |   5 |   5 | bill
+   7 |         8 |     5 |   3 |   1 | charlie
+   4 |         1 |     1 |   4 |   4 | dave
+  15 |         3 |     3 |   5 |   5 | elliot
+(5 rows)
+
+select * from test_rollup2 order by "test.name";
+ count_name | count_num | test.name 
+------------+-----------+-----------
+         13 |        12 | alice
+          6 |         4 | bill
+          8 |         5 | charlie
+          1 |         1 | dave
+          3 |         3 | elliot
+(5 rows)
+
+drop table test cascade;

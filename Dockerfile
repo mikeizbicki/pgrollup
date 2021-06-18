@@ -61,6 +61,12 @@ RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*
         postgresql-server-dev-$PG_MAJOR \
         gcc
 
+# install citus
+# see: http://docs.citusdata.com/en/v10.0/installation/multi_node_debian.html#steps-to-be-executed-on-all-nodes
+RUN apt-get install -y curl \
+ && curl https://install.citusdata.com/community/deb.sh | bash \
+ && apt-get -y install postgresql-13-citus-10.0
+
 # copy over the project
 COPY . /tmp/pg_rollup
 COPY postgresql.conf /etc/postgresql.conf.pg_rollup

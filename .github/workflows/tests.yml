@@ -20,4 +20,5 @@ jobs:
         docker-compose up -d
         sleep 20
         docker-compose exec -T db make installcheck || (cat regression.diffs && fail)
+        docker-compose exec -T db bash -c "cd citus && make installcheck" || (cat citus/regression.diffs && fail)
         docker-compose down
