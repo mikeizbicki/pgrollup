@@ -5,8 +5,6 @@ SET client_min_messages TO WARNING;
  * and this file is designed to catch those edge cases;
  * it doesn't test more exotic types, but hopefully that's not necessary
  */
-create or replace language plpython3u;
-create extension if not exists pgrollup;
 create table nulltest (
     id serial primary key,
     name text,

@@ -1,8 +1,4 @@
 SET client_min_messages TO WARNING;
-create or replace language plpython3u;
-drop extension pgrollup;
-create extension if not exists tdigest;
-create extension if not exists pgrollup;
 
 create table tdigest_test (
     id serial primary key,

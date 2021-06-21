@@ -1,4 +1,5 @@
 SET client_min_messages TO WARNING;
+
 /*
  * The purpose of this test file is a bit different than other test files;
  * we are not checking anywhere that the rollups created are correct;
@@ -8,8 +9,6 @@ SET client_min_messages TO WARNING;
  * but rather that the dependency checker is working;
  * therefore, there is no need to modify this file when adding a new algebra.
  */
-create or replace language plpython3u;
-create extension if not exists pgrollup;
 
 create table testdeps (
     id serial primary key,

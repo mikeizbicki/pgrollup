@@ -1,7 +1,4 @@
 SET client_min_messages TO WARNING;
-create or replace language plpython3u;
-create extension if not exists pgrollup;
-create extension if not exists pg_cron;
 create table test_cron (
     id serial primary key,
     name text,

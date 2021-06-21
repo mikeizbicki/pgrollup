@@ -1,6 +1,4 @@
 SET client_min_messages TO WARNING;
-create or replace language plpython3u;
-create extension if not exists pgrollup;
 
 --
 -- this function removes duplicates from an array,

@@ -1,12 +1,11 @@
 SET client_min_messages TO WARNING;
+
 /*
  * this file tests the types in the basic test case, but puts more emphasis on null values;
  * there were some bugs where null values were not getting coalesced into zero,
  * and this file is designed to catch those edge cases;
  * it doesn't test more exotic types, but hopefully that's not necessary
  */
-create or replace language plpython3u;
-create extension if not exists pgrollup;
 
 create table nulltest (
     id serial primary key,

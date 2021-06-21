@@ -396,9 +396,9 @@ CREATE EVENT TRIGGER pgrollup_drop_trigger ON sql_drop EXECUTE PROCEDURE pgrollu
 
 
 /*
- * Whenever a materialized view is created, we should replace it with a rollup.
+ * Whenever a materialized view is created, this event replaces it with a rollup.
  */
-CREATE OR REPLACE FUNCTION pgrollup_event_convert_f()
+CREATE OR REPLACE FUNCTION pgrollup_from_matview_event()
 RETURNS event_trigger AS $$
 DECLARE
     obj record;
@@ -408,19 +408,18 @@ BEGIN
     THEN
         FOR obj IN SELECT * FROM pg_event_trigger_ddl_commands()
         LOOP
-            PERFORM pgrollup_convert(obj.object_identity);
+            PERFORM pgrollup_from_matview(obj.object_identity);
         END LOOP;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
-CREATE EVENT TRIGGER pgrollup_event_convert ON ddl_command_end EXECUTE PROCEDURE pgrollup_event_convert_f();
 
 /*
  * Manual rollup functions modified from
  * https://www.citusdata.com/blog/2018/06/14/scalable-incremental-data-aggregation/
  *
  * The incremental_rollup_window function has been modified so that it doesn't
- * rollup the entire table at once, but in smaller chuncks;
+ * rollup the entire table at once, but in smaller chunks;
  * this is useful for rolling up large tables incrementally that have already been created
  */
 CREATE FUNCTION incremental_rollup_window(
@@ -599,10 +598,10 @@ END;
 $function$;
 
 
-CREATE OR REPLACE FUNCTION pgrollup_convert(
+CREATE OR REPLACE FUNCTION pgrollup_from_matview(
     view_name REGCLASS,
-    dry_run BOOLEAN DEFAULT FALSE,
-    mode TEXT DEFAULT NULL
+    mode TEXT DEFAULT NULL,
+    dry_run BOOLEAN DEFAULT FALSE
 )
 RETURNS VOID AS $$
     sql="""
@@ -625,7 +624,7 @@ RETURNS VOID AS $$
     """+view_definition[:-1]+"""
     );
     """
-    plpy.notice('query=\n'+query)
+    plpy.debug('query=\n'+query)
     sql = ("""
     SELECT pgrollup_parse("""
         +"""$pgrollup_parse$"""+query+"""$pgrollup_parse$,"""
@@ -900,7 +899,7 @@ RETURNS TEXT AS $$
                         found_seq = True
                         break
                 if found_seq:
-                    plpy.notice(f'rollup_column={rollup_column}, event_id_sequence_name={event_id_sequence_name }')
+                    plpy.debug(f'rollup_column={rollup_column}, event_id_sequence_name={event_id_sequence_name }')
         joininfo['rollup_column'] = rollup_column
         joininfo['event_id_sequence_name'] = event_id_sequence_name
 
