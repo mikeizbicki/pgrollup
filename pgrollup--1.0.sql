@@ -1043,7 +1043,7 @@ CREATE OR REPLACE FUNCTION assert_rollup_column_relative_error(rollup_name REGCL
     sql = "select rollup_column_relative_error('"+rollup_name+"','"+column_name+"') as relative_error;";
     res = plpy.execute(sql)
     if not res[0]['relative_error'] < relative_error:
-        plpy.error("relative_error="+res[0]['relative_error']+" > "+relative_error)
+        plpy.error("relative_error="+res[0]['relative_error']+" > "+str(relative_error))
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
 
 
@@ -1056,7 +1056,7 @@ CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, re
     sql = "select rollup_column_relative_error('"+rollup_name}+",'"+column_name}+") as relative_error;";
     res = plpy.execute(sql)
     if not res[0]['relative_error'] < relative_error:
-        plpy.error("relative_error="+res[0]['relative_error']+" > "+relative_error)
+        plpy.error("relative_error="+res[0]['relative_error']+" > "+str(relative_error))
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
 
 
@@ -1072,7 +1072,7 @@ CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, re
         sql = "select rollup_column_relative_error('"+rollup_name+"','"+column_name+"') as relative_error;";
         res = plpy.execute(sql)
         if not res[0]['relative_error'] < relative_error:
-            plpy.warning("column "+column_name+" has relative_error="+res[0]['relative_error']+" > "+relative_error)
+            plpy.warning("column "+column_name+" has relative_error="+res[0]['relative_error']+" > "+str(relative_error))
             num_bad_columns+=1
 
     # the test case
