@@ -29,6 +29,31 @@ def parse_create(text):
     >>> assert parse_create(sql12)
     >>> len(parse_create(sql0+sql1+sql2+sql3+sql4))
     5
+    >>> parse_create(sql0)
+    [{'joininfos': '[{"table_name": "tablename", "table_alias": "tablename", "condition": "", "join_type": "FROM"}]', 'rollup_name': 'example', 'groups': [['a', '"a"'], ['b', '"b"'], ['c', '"c"']], 'columns': [['count(*)', '"count(*)"'], ['sum(num)', 'sum']], 'where_clause': '(test>=from)', 'having_clause': 'foo=bar'}]
+    >>> parse_create(sql1)
+    [{'joininfos': '[{"table_name": "testparsing", "table_alias": "testparsing", "condition": "", "join_type": "FROM"}]', 'rollup_name': 'testparsing_rollup1', 'groups': [['name', '"name"']], 'columns': [['count(*)', 'count']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql2)
+    [{'joininfos': '[{"table_name": "testparsing", "table_alias": "testparsing", "condition": "", "join_type": "FROM"}]', 'rollup_name': 'testparsing_rollup2', 'groups': [['name', '"name"'], ['num', '"num"']], 'columns': [['count(*)', 'count']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql3)
+    [{'joininfos': '[{"table_name": "testparsing", "table_alias": "testparsing", "condition": "", "join_type": "FROM"}]', 'rollup_name': 'testparsing_rollup3', 'groups': [['name', '"name"']], 'columns': [['sum(num)', 'sum'], ['count(*)', 'count_all'], ['count(num)', '"count(num)"'], ['max(num)', '"max(num)"'], ['min(num)', '"min(num)"']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql4)
+    [{'joininfos': '[{"table_name": "testparsing", "table_alias": "testparsing", "condition": "", "join_type": "FROM"}]', 'rollup_name': 'testparsing_rollup4', 'groups': None, 'columns': [['sum(num)', 'sum'], ['count(*)', 'count_all'], ['count(num)', '"count(num)"'], ['max(num)', '"max(num)"'], ['min(num)', '"min(num)"']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql5)
+    [{'joininfos': '[{"table_name": "testparsing", "table_alias": "testparsing", "condition": "", "join_type": "FROM"}]', 'rollup_name': 'testparsing_rollup7', 'groups': None, 'columns': [['sum(num*num + 2)', '"sum(num*num + 2)"'], ['max(1)', '"max(1)"'], ['(max((1 +(((num))))*2)+ count(num))/count(*)+(max((1 +(((num))))*2)+ count(num))/count(*)', '"(max((1 +(((num))))*2)+ count(num))/count(*)+(max((1 +(((num))))*2)+ count(num))/count(*)"']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql6)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "testjoin1", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin2", "table_alias": "testjoin2", "condition": "using (id)", "join_type": "INNER JOIN"}]', 'rollup_name': 'testparsing_rollup7', 'groups': [['name', '"name"']], 'columns': [['count(*)', 'count']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql7)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "INNER", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin2", "table_alias": "testjoin2", "condition": "on testjoin1.id=testjoin2.id", "join_type": "INNER JOIN"}]', 'rollup_name': 'testparsing_rollup7', 'groups': [['name', '"name"']], 'columns': [['count(*)', 'count']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql8)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "t1", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin2", "table_alias": "t2", "condition": "on testjoin1.id=testjoin2.id", "join_type": "INNER JOIN"}, {"table_name": "testjoin3", "table_alias": "t3", "condition": "on testjoin1.name=testjoin3.name", "join_type": "LEFT JOIN"}]', 'rollup_name': 'testparsing_rollup7', 'groups': [['name', '"name"']], 'columns': [['count(*)', 'count']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql9)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "FULL", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin2", "table_alias": "testjoin2", "condition": "using (id)", "join_type": "INNER JOIN"}]', 'rollup_name': 'testparsing_rollup7', 'groups': [['name', '"name"']], 'columns': [['sum(num)', '"sum(num)"'], ['sum(foo)', '"sum(foo)"']], 'where_clause': None, 'having_clause': None}]    >>> parse_create(sql10)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "testjoin1", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin2", "table_alias": "testjoin2", "condition": "using (id)", "join_type": "INNER JOIN"}]', 'rollup_name': 'testparsing_rollup7', 'groups': [['name', '"name"']], 'columns': [['sum(num)', '"sum(num)"']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql11)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "t1", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin2", "table_alias": "t2", "condition": "using (id)", "join_type": "INNER JOIN"}]', 'rollup_name': 'testjoin_rollup1', 'groups': [['t1.name', '"t1.name"']], 'columns': [['sum(t1.num)', 'sum_num'], ['sum(t2.foo)', 'sum_foo']], 'where_clause': None, 'having_clause': None}]
+    >>> parse_create(sql12)
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "t1", "condition": "", "join_type": "FROM"}, {"table_name": "testjoin1", "table_alias": "t2", "condition": "on ((t1.id = t2.num))", "join_type": "INNER JOIN"}, {"table_name": "testjoin1", "table_alias": "t3", "condition": "on ((t2.id = t3.num))", "join_type": "INNER JOIN"}, {"table_name": "testjoin1", "table_alias": "t4", "condition": "on ((t3.id = t4.num))", "join_type": "INNER JOIN"}, {"table_name": "testjoin1", "table_alias": "t5", "condition": "on ((t4.id = t5.num))", "join_type": "INNER JOIN"}, {"table_name": "testjoin1", "table_alias": "t6", "condition": "on ((t5.id = t6.num))", "join_type": "INNER JOIN"}, {"table_name": "testjoin1", "table_alias": "t7", "condition": "on ((t6.id = t7.num))", "join_type": "INNER JOIN"}]', 'rollup_name': 'testjoin_rollup3', 'groups': [['t1.name', '"t1.name"']], 'columns': [['count(t1.num)', 'count_t1'], ['count(t2.num)', 'count_t2']], 'where_clause': None, 'having_clause': None}]
     '''
     tree = grammar.parse(text)
     infos = []

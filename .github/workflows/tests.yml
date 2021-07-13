@@ -10,7 +10,7 @@ jobs:
   docker:
     strategy:
       matrix:
-        POSTGRES_VERSION: [12, 13]
+        POSTGRES_VERSION: [ 12, 13]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2

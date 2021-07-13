@@ -1,0 +1,177 @@
+import sys
+from lark import Lark, Transformer
+
+def parse_create(sql):
+    '''
+    Example expected output:
+    [{'joininfos': '[{"table_name": "testjoin1", "table_alias": "t1", "condition": "", "join_type": "FROM"}, 
+    {"table_name": "testjoin2", "table_alias": "t2", "condition": "using (id)", "join_type": "INNER JOIN"}]',
+    'rollup_name': 'testjoin_rollup1',
+    'groups': [['t1.name', '"t1.name"']],
+    'columns': [['sum(t1.num)', 'sum_num'], ['sum(t2.foo)', 'sum_foo']],
+    'where_clause': None, 'having_clause': None}]
+    '''
+    dict = parse(sql)
+    infos = []                                              
+    infos.append({
+#       'joininfos' :
+#       'groups' : [xs['fields'][0] for xs in dict[0]['stmt']['groupClause']]
+#       'columns' :[[xs['val']['funcname'][0],xs['val']['args'][0]['fields'][0],xs['name']] for xs in dict[0]['stmt']['targetList'] if dict[0]['stmt']['targetList'][1]['val']['agg_star']=='False'],
+#                  [[xs['val']['funcname'][0],'*',xs['name']] for xs in m[0]['stmt']['targetList'] if dict[0]['stmt']['targetList'][1]['val']['agg_star']=='True'] 
+#       'where_clause': dict[0]['stmt']['whereClause']
+#       'having_clause': dict[0]['stmt']['havingClause']
+        })
+    return infos
+
+
+#Lark automagically creates a tree that represents the parsed text according to the grammar
+grammar = r"""
+    ?value: dict
+          | list
+          | ESCAPED_STRING     ->string
+          | NAME               -> name   
+          | SIGNED_NUMBER      -> number
+          | "true"             -> true
+          | "false"            -> false
+          | "<>"             -> null
+    
+    list: "(" [value*] ")"
+    dict: "{" value [pair*] "}"
+    pair : ":"NAME value
+
+    NAME: /[a-zA-Z_.0-9]+/
+    
+
+    %import common.ESCAPED_STRING
+    %import common.SIGNED_NUMBER
+    %import common.WS
+    %ignore WS
+    """
+
+class Transformer(Transformer):
+    '''
+    A class with methods corresponding to branch names. 
+    For each branch, the appropriate method will be called 
+    with the children of the branch as its argument, and 
+    its return value will replace the branch in the tree.
+    '''
+    def string(self, s):
+        '''
+        Example input:
+        [Tree('string', [Token('ESCAPED_STRING', '"t1"')]),Tree('string', [Token('ESCAPED_STRING', '"num"')])]
+        Example output:
+        ['t1','num']
+       '''
+        (s,) = s
+        return s[1:-1]
+    def number(self, n):
+        '''
+        Example input:
+        Tree('number', [Token('SIGNED_NUMBER', '40')])
+        Example output:
+        40
+        '''
+        (n,) = n
+        return int(n)                        
+    def pair(self,key_value):
+        k, v = key_value
+        return str(k),v
+                       
+    list = list   
+#   pair = tuple
+    dict = dict
+
+    #NAME = lambda self, n: n
+    name  = lambda self,n: ('TYPE',str(n[0]))
+    null = lambda self, _: None
+    true = lambda self, _: True
+    false = lambda self, _: False
+
+parser = Lark(grammar, start='value', lexer='standard')
+
+import pprint
+def parse(text):
+    '''
+    >>> pprint.pprint(parse(sql0))
+    '''
+    tree = parser.parse(text)
+    return Transformer().transform(tree)
+
+def parse_tree(text):
+    print(parser.parse(text).pretty())
+
+################################################################################
+# internal helper functions
+################################################################################
+
+
+#def _getcols(sql):
+#    if sql[0]['stmt']['targetList']
+
+
+################################################################################
+# postgres's parse tree on example sql expressions
+################################################################################
+
+#sql0 = '''
+#CREATE INCREMENTAL MATERIALIZED VIEW example AS (
+#    SELECT
+#        count(*),
+#        sum(num) AS sum
+#    FROM tablename
+#    WHERE (test>=from)
+#    GROUP BY a,b,c
+#    HAVING foo=bar
+#);
+#'''
+sql0='''
+ ({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 16} :location 16} {RESTARGET :name sum :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("num") :location 38}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 34} :location 34}) :fromClause ({RANGEVAR :schemaname <> :relname tablename :inh true :relpersistence p :alias <> :location 59}) :whereClause {AEXPR  :name (">=") :lexpr {COLUMNREF :fields ("test") :location 80} :rexpr {COLUMNREF :fields ("from") :location 86} :location 84} :groupClause ({COLUMNREF :fields ("a") :location 107} {COLUMNREF :fields ("b") :location 109} {COLUMNREF :fields ("c") :location 111}) :havingClause {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("foo") :location 124} :rexpr {COLUMNREF :fields ("bar") :location 128} :location 127} :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 132})
+'''
+
+sql1='''
+ ({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name count :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 16} :location 16}) :fromClause ({RANGEVAR :schemaname <> :relname testparsing :inh true :relpersistence p :alias <> :location 43}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 68}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause<> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 73})
+'''
+
+sql2='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name count :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 8} :location 8}) :fromClause ({RANGEVAR :schemaname <> :relname testparsing :inh true :relpersistence p :alias <> :location 35}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 60} {COLUMNREF :fields ("num") :location 65}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 69})
+'''
+
+sql3='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name sum :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("num") :location 21}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 17} :location 17} {RESTARGET :name count_all :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 42} :location 42} {RESTARGET :name <> :indirection <> :val{FUNCCALL :funcname ("count") :args ({COLUMNREF :fields ("num") :location 79}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 73} :location 73} {RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("max") :args ({COLUMNREF :fields ("num") :location 97}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 93} :location 93} {RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("min") :args ({COLUMNREF :fields ("num") :location 115}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 111} :location 111}) :fromClause ({RANGEVAR :schemaname <> :relname testparsing :inh true :relpersistence p :alias <> :location 129}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 154}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 159})
+'''
+
+sql4='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name sum :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("num") :location 20}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 16} :location 16} {RESTARGET :name count_all :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 41} :location 41} {RESTARGET :name <> :indirection <> :val{FUNCCALL :funcname ("count") :args ({COLUMNREF :fields ("num") :location 78}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 72} :location 72} {RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("max") :args ({COLUMNREF :fields ("num") :location 96}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 92} :location 92} {RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("min") :args ({COLUMNREF :fields ("num") :location 114}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 110} :location 110}) :fromClause ({RANGEVAR :schemaname <> :relname testparsing :inh true :relpersistence p :alias <> :location 128}) :whereClause <> :groupClause <> :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 140})
+'''
+
+sql5='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("sum") :args ({AEXPR  :name ("+") :lexpr {AEXPR  :name ("*") :lexpr {COLUMNREF :fields ("num") :location 20} :rexpr {COLUMNREF :fields ("num") :location 24} :location 23} :rexpr {A_CONST :val 2 :location 30} :location 28}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 16} :location 16} {RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("max") :args ({A_CONST :val 1 :location 46}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 42} :location 42} {RESTARGET :name <> :indirection <> :val {AEXPR  :name ("+") :lexpr {AEXPR  :name ("/") :lexpr {AEXPR  :name ("+") :lexpr {FUNCCALL :funcname ("max") :args ({AEXPR  :name ("*") :lexpr {AEXPR  :name ("+") :lexpr {A_CONST :val 1 :location 64} :rexpr {COLUMNREF :fields ("num") :location 71} :location 66} :rexpr {A_CONST :val 2 :location 79} :location 78}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 59} :rexpr {FUNCCALL :funcname ("count") :args ({COLUMNREF :fields ("num") :location 90}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 84} :location 82} :rexpr {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 96} :location 95} :rexpr {AEXPR  :name ("/") :lexpr {AEXPR  :name ("+") :lexpr {FUNCCALL :funcname ("max") :args ({AEXPR  :name ("*") :lexpr {AEXPR  :name ("+") :lexpr {A_CONST :val 1 :location 121} :rexpr {COLUMNREF :fields ("num") :location 128} :location 123} :rexpr {A_CONST :val 2 :location 136} :location 135}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 116} :rexpr {FUNCCALL :funcname ("count") :args ({COLUMNREF :fields ("num") :location 147}) :agg_order <> :agg_filter <> :agg_within_group false:agg_star false :agg_distinct false :func_variadic false :over <> :location 141} :location 139} :rexpr {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 153} :location 152} :location 113} :location 58}) :fromClause ({RANGEVAR :schemaname <> :relname testparsing :inh true :relpersistence p :alias <> :location 171}) :whereClause <> :groupClause <> :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 184})
+ '''
+
+sql6='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name count :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 17} :location 17}) :fromClause ({JOINEXPR :jointype 0 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias <> :location 44} :rarg {RANGEVAR :schemaname <> :relname testjoin2 :inh true :relpersistence p :alias <> :location 63} :usingClause ("id") :quals <> :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 97}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 102})
+'''
+
+sql7='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name count :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 16} :location 16}) :fromClause ({JOINEXPR :jointype 0 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias <> :location 43} :rarg {RANGEVAR :schemaname <> :relname testjoin2 :inh true :relpersistence p :alias <> :location 68} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("testjoin1" "id") :location 81} :rexpr {COLUMNREF :fields ("testjoin2" "id") :location 94} :location 93} :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 120}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 125})
+'''
+
+sql8='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name count :indirection <> :val {FUNCCALL :funcname ("count") :args <> :agg_order <> :agg_filter <> :agg_within_group false :agg_star true :agg_distinct false :func_variadic false :over <> :location 16} :location 16}) :fromClause ({JOINEXPR :jointype 1 :isNatural false :larg {JOINEXPR :jointype 0 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t1 :colnames <>} :location 43} :rarg {RANGEVAR :schemaname <> :relname testjoin2 :inh true :relpersistence p :alias {ALIAS :aliasname t2 :colnames <>} :location 74} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("testjoin1" "id") :location 93} :rexpr {COLUMNREF :fields ("testjoin2" "id") :location 106} :location 105} :alias <> :rtindex 0} :rarg {RANGEVAR :schemaname <> :relname testjoin3 :inh true :relpersistence p :alias {ALIAS :aliasname t3 :colnames <>} :location 139} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("testjoin1" "name") :location 158} :rexpr {COLUMNREF :fields ("testjoin3" "name") :location 173} :location 172} :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 201}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 207})
+'''
+
+sql9='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("num") :location 21}) :agg_order <>:agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 17} :location 17} {RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("foo") :location 39}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 35} :location 35}) :fromClause ({JOINEXPR :jointype 2 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias <> :location 53} :rarg {RANGEVAR :schemaname <> :relname testjoin2 :inh true :relpersistence p :alias <> :location 77} :usingClause ("id") :quals <> :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 111}) :havingClause <> :windowClause <>:valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 116})
+'''
+
+sql10='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name <> :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("num") :location 20}) :agg_order <>:agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 16} :location 16}) :fromClause ({JOINEXPR :jointype 0 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias <> :location 34} :rarg {RANGEVAR :schemaname <> :relname testjoin2 :inh true :relpersistence p :alias <> :location 53} :usingClause ("id") :quals <> :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("name") :location 87}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <>:limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 92})
+'''
+
+sql11='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name sum_num :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("t1" "num") :location 12}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 8} :location 8} {RESTARGET :name sum_foo :indirection <> :val {FUNCCALL :funcname ("sum") :args ({COLUMNREF :fields ("t2" "foo") :location 40}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 36} :location 36}) :fromClause ({JOINEXPR :jointype 0 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t1 :colnames <>} :location 68} :rarg {RANGEVAR :schemaname <> :relname testjoin2 :inh true :relpersistence p :alias {ALIAS :aliasname t2 :colnames <>} :location 91} :usingClause ("id") :quals <> :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("t1" "name") :location 127}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 135})
+'''
+
+sql12='''
+({RAWSTMT :stmt {SELECT :distinctClause <> :intoClause <> :targetList ({RESTARGET :name count_t1 :indirection <> :val {FUNCCALL :funcname ("count") :args ({COLUMNREF :fields ("t1" "num") :location 14}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 8} :location 8} {RESTARGET :name count_t2 :indirection <> :val {FUNCCALL :funcname ("count") :args ({COLUMNREF :fields ("t2" "num") :location 45}) :agg_order <> :agg_filter <> :agg_within_group false :agg_star false :agg_distinct false :func_variadic false :over <> :location 39}:location 39}) :fromClause ({JOINEXPR :jointype 0 :isNatural false :larg {JOINEXPR :jointype 0 :isNatural false :larg {JOINEXPR :jointype 0 :isNatural false :larg {JOINEXPR :jointype 0 :isNatural false :larg {JOINEXPR :jointype 0 :isNatural false :larg {JOINEXPR :jointype 0 :isNatural false :larg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t1 :colnames<>} :location 79} :rarg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t2 :colnames <>} :location 102} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("t1" "id") :location 120} :rexpr {COLUMNREF :fields ("t2" "num") :location 128} :location 126} :alias <> :rtindex 0} :rarg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t3 :colnames <>} :location 148} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("t2" "id") :location 166} :rexpr {COLUMNREF :fields ("t3" "num") :location 174} :location 172} :alias <> :rtindex 0} :rarg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t4 :colnames <>} :location 194} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("t3" "id") :location 212} :rexpr {COLUMNREF :fields ("t4" "num") :location 220} :location 218} :alias <> :rtindex 0} :rarg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t5 :colnames <>} :location 240} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("t4" "id") :location 258} :rexpr {COLUMNREF :fields ("t5" "num") :location 266} :location 264} :alias <> :rtindex 0} :rarg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t6 :colnames <>} :location 286} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("t5" "id") :location 304} :rexpr {COLUMNREF :fields ("t6" "num") :location 312} :location 310} :alias <> :rtindex 0} :rarg {RANGEVAR :schemaname <> :relname testjoin1 :inh true :relpersistence p :alias {ALIAS :aliasname t7 :colnames <>} :location 332} :usingClause <> :quals {AEXPR  :name ("=") :lexpr {COLUMNREF :fields ("t6" "id") :location 350} :rexpr {COLUMNREF :fields ("t7" "num") :location 358} :location 356} :alias <> :rtindex 0}) :whereClause <> :groupClause ({COLUMNREF :fields ("t1" "name") :location 379}) :havingClause <> :windowClause <> :valuesLists <> :sortClause <> :limitOffset <> :limitCount <> :limitOption 0 :lockingClause <> :withClause <> :op 0 :all false :larg <> :rarg <>} :stmt_location 0 :stmt_len 388})
+'''

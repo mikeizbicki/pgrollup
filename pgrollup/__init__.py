@@ -189,7 +189,7 @@ class Rollup:
     def create_table(self):
         temp_str = 'TEMPORARY ' if self.temporary else ''
         return (
-f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
+'''CREATE '''+temp_str+'''TABLE '''+self.rollup_table_name+''' (
     '''+
     (
     '''
@@ -277,11 +277,11 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 '''+
                 ''',
                 '''.join([
-                    ''+column.name+self._joinsub(f''' = CASE
-                        WHEN {self.rollup_table_name}."{column.algebra['name']}({column.value})" IS NOT NULL AND excluded."{column.algebra['name']}({column.value})" IS NOT NULL THEN {column.algebra['plus']}
-                        WHEN {self.rollup_table_name}."{column.algebra['name']}({column.value})" IS NOT NULL AND excluded."{column.algebra['name']}({column.value})" IS     NULL THEN {self.rollup_table_name}."{column.algebra['name']}({column.value})" 
-                        WHEN {self.rollup_table_name}."{column.algebra['name']}({column.value})" IS     NULL AND excluded."{column.algebra['name']}({column.value})" IS NOT NULL THEN excluded."{column.algebra['name']}({column.value})"
-                        WHEN {self.rollup_table_name}."{column.algebra['name']}({column.value})" IS     NULL AND excluded."{column.algebra['name']}({column.value})" IS     NULL THEN {column.algebra['zero']}
+                    ''+column.name+self._joinsub(''' = CASE
+                        WHEN '''+self.rollup_table_name+'''."'''+column.algebra['name']+'''('''+column.value+''')" IS NOT NULL AND excluded."'''+column.algebra['name']+'''('''+column.value+''')" IS NOT NULL THEN '''+column.algebra['plus']+'''
+                        WHEN '''+self.rollup_table_name+'''."'''+column.algebra['name']+'''('''+column.value+''')" IS NOT NULL AND excluded."'''+column.algebra['name']+'''('''+column.value+''')" IS     NULL THEN '''+self.rollup_table_name+'''."'''+column.algebra['name']+'''('''+column.value+''')" 
+                        WHEN '''+self.rollup_table_name+'''."'''+column.algebra['name']+'''('''+column.value+''')" IS     NULL AND excluded."'''+column.algebra['name']+'''('''+column.value+''')" IS NOT NULL THEN excluded."'''+column.algebra['name']+'''('''+column.value+''')"
+                        WHEN '''+self.rollup_table_name+'''."'''+column.algebra['name']+'''('''+column.value+''')" IS     NULL AND excluded."'''+column.algebra['name']+'''('''+column.value+''')" IS     NULL THEN '''+column.algebra['zero']+'''
                         END
                     ''',
                         self.rollup_table_name,
@@ -377,25 +377,25 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 END;
                 $$;
                 '''+
-                f'''INSERT INTO pgrollup_rollups 
-                    ( rollup_name
-                    , table_alias
-                    , table_name
+                """INSERT INTO pgrollup_rollups 
+                   ( rollup_name
+                   , table_alias
+                   , table_name
                     , rollup_column
                     , event_id_sequence_name
                     , sql
                     , mode
                     )
                     values 
-                    ( '{self.rollup_name}'
-                    , '{joininfo['table_alias']}'
-                    , '{joininfo['table_name']}'
-                    , '{joininfo['rollup_column'] or 'NULL' }'
-                    , '{joininfo['event_id_sequence_name'] or 'NULL' }'
-                    , '{function_name}'
+                    ( '"""+self.rollup_name+"""'
+                    , '"""+joininfo['table_alias']+"""'
+                    , '"""+joininfo['table_name']+"""'
+                    , '"""+(joininfo['rollup_column'] or 'NULL' )+"""'
+                    , '"""+(joininfo['event_id_sequence_name'] or 'NULL') +"""'
+                    , '"""+function_name+"""'
                     , 'init'
                     );
-                ''')
+                """)
         return '\n'.join(manualrollups)
 
 
@@ -533,8 +533,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 )
                 +
                 (
-                f'''
-                WHERE ({self.where_clause})
+                '''
+                WHERE ('''+self.where_clause+''')
                   AND ''' + new_where 
                 +
                 (
@@ -555,8 +555,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 if len(self.groups)>0 else ''
                 ) +
                 (
-                f'''
-                HAVING ({self.having_clause})
+                '''
+                HAVING ('''+self.having_clause+''')
                 '''
                 if self.having_clause else ''
                 )
@@ -608,8 +608,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 )
                 +
                 (
-                f'''
-                WHERE ({self.where_clause})'''
+                '''
+                WHERE ('''+self.where_clause+''')'''
                 +
                 (
                 '''
@@ -629,8 +629,8 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 if len(self.groups)>0 else ''
                 ) +
                 (
-                f'''
-                HAVING ({self.having_clause})
+                '''
+                HAVING ('''+self.having_clause+''')
                 '''
                 if self.having_clause else ''
                 )
@@ -695,13 +695,13 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         ''')
 
     def create_drop(self):
-        return (f'''
-        CREATE OR REPLACE FUNCTION pgrollup_drop__'''+self.rollup_name+f'''()
+        return ('''
+        CREATE OR REPLACE FUNCTION pgrollup_drop__'''+self.rollup_name+'''()
         RETURNS VOID LANGUAGE PLPGSQL AS $$
             BEGIN
-            DROP TABLE {self.rollup_table_name} CASCADE;
-            DROP VIEW IF EXISTS {self.rollup}_groundtruth CASCADE;
-            DROP VIEW IF EXISTS {self.rollup}_groundtruth_raw CASCADE;
+            DROP TABLE '''+self.rollup_table_name+''' CASCADE;
+            DROP VIEW IF EXISTS '''+self.rollup+'''_groundtruth CASCADE;
+            DROP VIEW IF EXISTS '''+self.rollup+'''_groundtruth_raw CASCADE;
             '''
             +
             '''
@@ -710,11 +710,11 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
                 DROP FUNCTION pgrollup_unsafecreatetriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+''' CASCADE;'''
                 for joininfo in self.joininfos])
             +
-            f'''
-            DELETE FROM pgrollup_rollups WHERE rollup_name='{self.rollup}';
+            """
+            DELETE FROM pgrollup_rollups WHERE rollup_name='"""+self.rollup+"""';
         END;
         $$;
-        ''')
+        """)
 
     def create(self):
         return '\n\n'.join([
