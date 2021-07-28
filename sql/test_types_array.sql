@@ -1,5 +1,11 @@
 SET client_min_messages TO WARNING;
 
+-- FIXME:
+-- we drop the vector extension since it prevents comparisons of INT[]=INT[] for some reason
+DROP EXTENSION vector CASCADE;
+CREATE EXTENSION IF NOT EXISTS pgrollup;
+CREATE EVENT TRIGGER pgrollup_from_matview_trigger ON ddl_command_end WHEN TAG IN ('CREATE MATERIALIZED VIEW') EXECUTE PROCEDURE pgrollup_from_matview_event();
+
 --
 -- this function removes duplicates from an array,
 -- and can be used to modify how rollups work with arrays
@@ -9,11 +15,11 @@ SELECT ARRAY(SELECT DISTINCT unnest(a));
 $$ LANGUAGE 'sql' STRICT IMMUTABLE PARALLEL SAFE;
 do $$
 BEGIN
-    assert( array_uniq('{}'::INT[]) = '{}');
-    assert( array_uniq('{1,1,1,1}'::INT[]) = '{1}');
-    assert( array_uniq('{1,1,2,3}'::INT[]) = '{1,2,3}');
-    assert( array_uniq('{1,2,3,1}'::INT[]) = '{1,2,3}');
-    assert( array_uniq('{NULL,NULL}'::INT[]) = '{NULL}');
+    assert( array_uniq('{}'::INT[]) = '{}'::INT[]);
+    assert( array_uniq('{1,1,1,1}'::INT[]) = '{1}'::INT[]);
+    assert( array_uniq('{1,1,2,3}'::INT[]) = '{1,2,3}'::INT[]);
+    assert( array_uniq('{1,2,3,1}'::INT[]) = '{1,2,3}'::INT[]);
+    assert( array_uniq('{NULL,NULL}'::INT[]) = '{NULL}'::INT[]);
     assert( array_uniq(NULL::INT[]) IS NULL);
 END;
 $$;

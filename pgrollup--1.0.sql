@@ -345,6 +345,61 @@ END IF;
 END
 $do$ language 'plpgsql';
 
+/*
+ * https://github.com/mikeizbicki/vector
+ * NOTE:
+ * forked from https://github.com/ankane/pgvector , but they haven't merged changes upstream
+ * FIXME:
+ * the aggregate functions require renaming because pgrollup can't handle avg/sum functions with different return types yet
+ */  
+do $do$
+DECLARE
+    has_extension BOOLEAN;
+BEGIN
+SELECT true FROM pg_extension INTO has_extension WHERE extname='vector';
+IF has_extension THEN
+
+CREATE AGGREGATE vector_sum (vector)
+(
+    sfunc = vector_add,
+    stype = vector,
+    combinefunc = vector_add,
+    parallel = safe
+);
+
+CREATE AGGREGATE vector_avg (vector)
+(
+    sfunc = vector_avg_accum,
+    stype = vector_avg_accum,
+    finalfunc = vector_avg_final,
+    combinefunc = vector_avg_combine,
+    parallel = safe
+);
+
+INSERT INTO algebra
+    (name,agg,type,zero,plus,negate,view)
+    VALUES
+    ('vector_sum'
+    ,'vector_sum(x)'
+    ,'vector'
+    ,'null'
+    ,'vector_sum(x)+vector_sum(y)',
+    '-x',
+    'x'
+    ),
+    ('vector_avg'
+    ,'vector_avg(x)'
+    ,'vector'
+    ,'null'
+    ,'vector_avg(x)*((count(x)/(count(x)+count(y))::REAL)::REAL)+vector_avg(y)*((count(y)/(count(x)+count(y))::REAL)::REAL)'
+    ,'-x'
+    ,'x'
+    );
+
+END IF;
+END
+$do$ language 'plpgsql';
+
 --------------------------------------------------------------------------------
 
 CREATE TABLE pgrollup_rollups (

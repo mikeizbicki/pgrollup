@@ -8,6 +8,7 @@ CREATE EXTENSION hll;
 CREATE EXTENSION pg_cron;
 CREATE EXTENSION tdigest;
 CREATE EXTENSION topn;
+CREATE EXTENSION vector;
 -- load pgrollup and configure it for automatic rollup creation to facilitate tests
 CREATE EXTENSION pgrollup;
 CREATE EVENT TRIGGER pgrollup_from_matview_trigger ON ddl_command_end WHEN TAG IN ('CREATE MATERIALIZED VIEW') EXECUTE PROCEDURE pgrollup_from_matview_event();

@@ -9,6 +9,7 @@ CREATE EXTENSION hll;
 CREATE EXTENSION pg_cron;
 CREATE EXTENSION tdigest;
 CREATE EXTENSION topn;
+CREATE EXTENSION vector;
 
 -- load pgrollup and configure it for automatic rollup creation to facilitate tests
 CREATE EXTENSION pgrollup;

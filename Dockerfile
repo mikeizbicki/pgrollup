@@ -40,6 +40,29 @@ RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*
         unzip \
  && apt-get autoremove
 
+# install vector
+# FIXME:
+# this is done as a separate step from the other dependencies because this library is getting lots of development
+# and this minimizes build times;
+# the downside is that the dependencies will not get cleaned up from the resulting docker image
+RUN export PG_MAJOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-\([0-9.]*\)\/.*/\1/p"`             \
+ && export PG_MINOR=`apt list --installed 2>&1 | sed -n "s/^postgresql-$PG_MAJOR\/\S*\s\(\S*\)\s.*/\1/p"` \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends --allow-downgrades \
+        gcc \
+        git \
+        make \
+        postgresql-server-dev-$PG_MAJOR \
+        python3 \
+        python3-pip \
+        python3-setuptools
+RUN cd /tmp \
+ && git clone https://github.com/mikeizbicki/pgvector \
+ && cd pgvector \
+ && make -j \
+ && make install \
+ && rm -rf /tmp/pgvector
+
 # create a tablespace directory for the testcases
 RUN mkdir /tmp/tablespace \
  && chown postgres /tmp/tablespace
