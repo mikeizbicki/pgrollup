@@ -419,7 +419,8 @@ CREATE TABLE pgrollup_settings (
     value TEXT NOT NULL
 );
 INSERT INTO pgrollup_settings (name,value) VALUES
-    ('default_mode','trigger');
+    ('default_mode','trigger'),
+    ('cron_max_rollup_size','100000');
 
 /*
  * Whenever the source table for a rollup is dropped,
@@ -1054,6 +1055,9 @@ RETURNS VOID AS $func$
         # enter the new mode
         ########################################    
         if mode=='cron':
+            sql = "SELECT value FROM pgrollup_settings WHERE name='cron_max_rollup_size';"
+            cron_max_rollup_size = int(plpy.execute(sql)[0]['value'])
+
             # we use a "random" delay on the cron job to ensure that all of the jobs
             # do not happen at the same time, overloading the database
             sql = (f"""
@@ -1067,7 +1071,7 @@ RETURNS VOID AS $func$
                 SELECT cron.schedule(
                     'pgrollup.{rollup_name}',
                     '* * * * *',
-                    $$SELECT do_rollup('{rollup_name}',max_rollup_size=>10000,delay_seconds=>{delay});$$
+                    $$SELECT do_rollup('{rollup_name}',max_rollup_size=>{cron_max_rollup_size},delay_seconds=>{delay});$$
                 );
                 ''')
             # FIXME:
