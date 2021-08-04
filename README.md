@@ -186,6 +186,11 @@ SELECT create_rollup(
 );
 ```
 
+Warnings:
+
+If you have a smallint in the basetable, and do sum(smallint), the sum is also a smallint and this can result in sql errors on overflow;
+you should probably cast the type to integer/bigint in the materialized view.
+
 Limitations:
 1. only supports a single table, and not views/joins
 
