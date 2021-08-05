@@ -1066,7 +1066,8 @@ RETURNS VOID AS $func$
                 WHERE jobname ILIKE 'pgrollup.%';
                 """)
             num_jobs = plpy.execute(sql)[0]['count']
-            delay = 13*num_jobs%60
+            # delay = 13*num_jobs%60
+            delay = 0
             plpy.execute(f'''
                 SELECT cron.schedule(
                     'pgrollup.{rollup_name}',
