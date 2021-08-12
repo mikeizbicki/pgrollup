@@ -31,13 +31,13 @@ rm -rf /tmp/tdigest
 
 # install datasketches
 cd /tmp
-wget http://api.pgxn.org/dist/datasketches/1.4.0/datasketches-1.4.0.zip
-unzip datasketches-1.4.0.zip
-rm datasketches-1.4.0.zip
-cd datasketches-1.4.0
+wget http://api.pgxn.org/dist/datasketches/1.5.0/datasketches-1.5.0.zip
+unzip datasketches-1.5.0.zip
+rm datasketches-1.5.0.zip
+cd datasketches-1.5.0
 make -j
 make install
-rm -rf /tmp/datasketches-1.4.0
+rm -rf /tmp/datasketches-1.5.0
 
 # install pg_cron plugin from source
 cd /tmp
