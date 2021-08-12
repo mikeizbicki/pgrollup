@@ -536,7 +536,7 @@ BEGIN
             -- create index (SHARE lock).  I believe everything is therefore still
             -- correct, but this is magic beyond my domain expertise, so I'm
             -- not 100% certain.
-            EXECUTE format('LOCK %s IN ROW EXCLUSIVE MODE', table_to_lock);
+            EXECUTE format('LOCK %s IN EXCLUSIVE MODE', table_to_lock);
             RAISE 'release table lock';
         EXCEPTION WHEN OTHERS THEN
         END;
