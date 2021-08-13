@@ -502,7 +502,7 @@ BEGIN
     -- the COALESCEs here are assuming that the sequence is positive;
     -- that's the default value, but these can be changed;
     -- the *REALLY* correct thing to do here is to extract the minimum value from the sequence and use that
-    SELECT table_name, last_aggregated_id+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
+    SELECT table_name, COALESCE(last_aggregated_id,0)+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
     FROM pgrollup_rollups
     WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
@@ -536,7 +536,7 @@ BEGIN
             -- create index (SHARE lock).  I believe everything is therefore still
             -- correct, but this is magic beyond my domain expertise, so I'm
             -- not 100% certain.
-            EXECUTE format('LOCK %s IN EXCLUSIVE MODE', table_to_lock);
+            EXECUTE format('LOCK %s IN ROW EXCLUSIVE MODE', table_to_lock);
             RAISE 'release table lock';
         EXCEPTION WHEN OTHERS THEN
         END;
@@ -630,10 +630,11 @@ BEGIN
     /* determine which page views we can safely aggregate */
     SELECT window_start, window_end INTO start_id, end_id
     FROM incremental_rollup_window(rollup_name,table_alias,max_rollup_size,force_safe);
-    RAISE DEBUG 'do_rollup: incremental_rollup_window done';
+    RAISE DEBUG 'do_rollup: incremental_rollup_window done; start_id=%, end_id=%', start_id, end_id;
 
-    /* exit early if there are no new page views to aggregate */
+    /* exit early if there are no new rows to aggregate */
     IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN 
+        RAISE DEBUG 'no new rows to aggregate';
         RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id;
         RETURN;
     END IF;
@@ -646,6 +647,7 @@ BEGIN
     FROM pgrollup_rollups 
     WHERE pgrollup_rollups.rollup_name = do_rollup.rollup_name;
 
+    RAISE DEBUG 'do_rollup; sql_command=%', sql_command;
     EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
 
     -- return
