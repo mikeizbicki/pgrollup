@@ -27,7 +27,9 @@ jobs:
         docker-compose exec -T db bash -c "cd citus && make installcheck" || (cat citus/regression.diffs && fail)
     - name: concurrency tests
       run: |
-        docker-compose exec -T db python3 test_concurrency.py
+        docker-compose exec -T db python3 test_concurrency.py --db=test_concurrency --mode=trigger
+        docker-compose exec -T db python3 test_concurrency.py --db=test_concurrency --mode=manual
+        docker-compose exec -T db python3 test_concurrency.py --db=root --mode=cron --runtime=600 --delay_seconds=20
     - name: docker-compose down
       run: |
         docker-compose down
