@@ -502,7 +502,7 @@ BEGIN
     -- the COALESCEs here are assuming that the sequence is positive;
     -- that's the default value, but these can be changed;
     -- the *REALLY* correct thing to do here is to extract the minimum value from the sequence and use that
-    SELECT table_name, COALESCE(last_aggregated_id,0)+1, LEAST(last_aggregated_id+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
+    SELECT table_name, COALESCE(last_aggregated_id,0)+1, LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
     INTO table_to_lock, window_start, window_end
     FROM pgrollup_rollups
     WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
@@ -536,7 +536,7 @@ BEGIN
             -- create index (SHARE lock).  I believe everything is therefore still
             -- correct, but this is magic beyond my domain expertise, so I'm
             -- not 100% certain.
-            EXECUTE format('LOCK %s IN ROW EXCLUSIVE MODE', table_to_lock);
+            EXECUTE format('LOCK %s IN EXCLUSIVE MODE', table_to_lock);
             RAISE 'release table lock';
         EXCEPTION WHEN OTHERS THEN
         END;
@@ -659,6 +659,7 @@ $function$;
 CREATE OR REPLACE FUNCTION pgrollup_from_matview(
     view_name REGCLASS,
     mode TEXT DEFAULT NULL,
+    partition_clause TEXT DEFAULT NULL,
     dry_run BOOLEAN DEFAULT FALSE
 )
 RETURNS VOID AS $$
@@ -682,13 +683,13 @@ RETURNS VOID AS $$
     """+view_definition[:-1]+"""
     );
     """
-    plpy.debug('query=\n'+query)
     sql = ("""
     SELECT pgrollup_parse("""
         +"""$pgrollup_parse$"""+query+"""$pgrollup_parse$,"""
         +str(dry_run)+","
         +('NULL' if not mode else "'"+mode+"'")+","
-        +('NULL' if not tablespace else "'"+tablespace+"'")
+        +('NULL' if not tablespace else "'"+tablespace+"'")+','
+        +('NULL' if not partition_clause else "'"+partition_clause+"'")
     +""")""")
     plpy.execute(sql)
 $$
@@ -699,7 +700,8 @@ CREATE OR REPLACE FUNCTION pgrollup_parse(
     text TEXT,
     dry_run BOOLEAN DEFAULT FALSE,
     mode TEXT DEFAULT NULL,
-    tablespace TEXT DEFAULT NULL
+    tablespace TEXT DEFAULT NULL,
+    partition_clause TEXT DEFAULT NULL
 )
 RETURNS VOID AS $$
     import pgrollup.parsing
@@ -715,7 +717,8 @@ RETURNS VOID AS $$
             having_clause => $6,
             dry_run => $7,
             mode => $8,
-            tablespace => $9
+            tablespace => $9,
+            partition_clause => $10
         ) as result;'''
         plan = plpy.prepare(sql,[
             'text',
@@ -725,6 +728,7 @@ RETURNS VOID AS $$
             'text',
             'text',
             'boolean',
+            'text',
             'text',
             'text',
             ])
@@ -737,9 +741,9 @@ RETURNS VOID AS $$
             cmd['having_clause'],
             dry_run,
             mode,
-            tablespace
+            tablespace,
+            partition_clause
             ])
-
 $$
 LANGUAGE plpython3u;
 
@@ -752,6 +756,7 @@ CREATE OR REPLACE FUNCTION create_rollup_internal(
     where_clause TEXT DEFAULT NULL,
     having_clause TEXT DEFAULT NULL,
     tablespace TEXT DEFAULT NULL,
+    partition_clause TEXT DEFAULT NULL,
     mode TEXT DEFAULT NULL,
     dry_run BOOLEAN DEFAULT FALSE
     )
@@ -992,6 +997,7 @@ RETURNS TEXT AS $$
         columns_view_list,
         where_clause,
         having_clause,
+        partition_clause,
     ).create()
 
     # set the rollup mode

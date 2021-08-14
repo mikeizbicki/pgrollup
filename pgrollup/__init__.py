@@ -152,6 +152,7 @@ class Rollup:
             columns_view,
             where_clause,
             having_clause,
+            partition_clause,
             ):
         self.temporary = temporary
         self.tablespace = tablespace
@@ -160,6 +161,7 @@ class Rollup:
         self.joininfos = joininfos
         self.table = table = joininfos[0]['table_name']
         self.rollup_column = joininfos[0]['rollup_column']
+        self.partition_clause = partition_clause
 
         self.invertable = all([column.algebra['negate'] for column in columns_raw])
 
@@ -215,7 +217,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
     if len(self.groups)>0
     else '''raw_true BOOLEAN DEFAULT TRUE UNIQUE NOT NULL''' )+
     '''
-    ) TABLESPACE '''+self.tablespace+';\n\n')
+    ) '''+ (self.partition_clause if self.partition_clause else '''TABLESPACE '''+self.tablespace) +';\n\n')
 
     
     def create_indexes_notnull(self):
@@ -224,7 +226,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
         See: https://www.enterprisedb.com/postgres-tutorials/postgresql-column-constraint-null-allowing-only-one-null
         '''
         if len(self.groups)>0:
-            return ('\n'.join(['CREATE UNIQUE INDEX '''+self.rollup_name+'_index_'+binary+'_notnull ON '+self.rollup_table_name+' (' + ','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.groups)])+') TABLESPACE '+self.tablespace+' WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.groups) if i=='0' ])+';' for binary in self.binaries]))
+            return ('\n'.join(['CREATE UNIQUE INDEX '''+self.rollup_name+'_index_'+binary+'_notnull ON '+self.rollup_table_name+' (' + ','.join(['('+key.name+' IS NULL)'+(','+key.name if self.partition_clause else '') if i=='0' else key.name for i,key in zip(binary,self.groups)])+') ' + ('' if self.partition_clause else 'TABLESPACE '+self.tablespace)+' WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.groups) if i=='0' ])+';' for binary in self.binaries]))
         else:
             return ''
 
@@ -232,7 +234,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
     def create_indexes_groups(self):
         if len(self.groups)>1:
             return '''
-            CREATE INDEX '''+self.rollup_name+'_index_num ON '+self.rollup_table_name+' ('+','.join([key.name for key in self.groups])+') TABLESPACE '+self.tablespace+';'
+            CREATE INDEX '''+self.rollup_name+'_index_num ON '+self.rollup_table_name+' ('+','.join([key.name for key in self.groups])+') ' + ('' if self.partition_clause else 'TABLESPACE '+self.tablespace+';')
         else:
             return ''
 
@@ -278,7 +280,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             '''
             ON CONFLICT '''
             ' (' + 
-            (','.join(['('+key.name+' IS NULL)' if i=='0' else key.name for i,key in zip(binary,self.groups)]) if len(self.groups)>0 else 'raw_true'
+            (','.join(['('+key.name+' IS NULL)'+(','+key.name if self.partition_clause else '') if i=='0' else key.name for i,key in zip(binary,self.groups)]) if len(self.groups)>0 else 'raw_true'
             )+') WHERE TRUE '+' '.join(['and '+key.name+' IS NULL' for i,key in zip(binary,self.groups) if i=='0' ])
             +
             '''

@@ -2,6 +2,15 @@
 # stop and throw an error on error
 set -e
 
+# install pg_partman
+cd /tmp
+git clone https://github.com/pgpartman/pg_partman
+cd pg_partman
+git checkout v4.5.1
+make
+make install
+rm -rf /tmp/pg_partman
+
 # install postgres hll extension from source
 cd /tmp 
 git clone https://github.com/citusdata/postgresql-hll
