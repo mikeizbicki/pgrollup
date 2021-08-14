@@ -40,11 +40,16 @@ try:
     curs.execute(f'CREATE DATABASE {args.db};')
     conn.commit()
 except psycopg2.errors.DuplicateDatabase:
-    logging.warning(f'dropping database {args.db}')
-    curs = conn.cursor()
-    curs.execute(f'DROP DATABASE {args.db};')
-    curs.execute(f'CREATE DATABASE {args.db};')
-    conn.commit()
+    try:
+        logging.warning(f'dropping database {args.db}')
+        curs = conn.cursor()
+        curs.execute(f'DROP DATABASE {args.db};')
+        curs.execute(f'CREATE DATABASE {args.db};')
+        conn.commit()
+    except psycopg2.errors.ObjectInUse:
+        logging.warning(f'database {args.db} in use; could not drop')
+        logging.warning(f'this is expected behavior when using the --mode=cron and --db=root, but you will not be able to run this command again without recreating the container')
+
 conn.close()
 
 logging.info('create the relations needed for testing')
