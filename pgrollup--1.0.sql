@@ -529,13 +529,6 @@ BEGIN
      */
     IF force_safe THEN
         BEGIN
-            -- NOTE: The line below is modified from the original to acquire
-            -- a ROW EXCLUSIVE lock rather than an exclusive lock; this lock still
-            -- prevents update/insert/delete operations on the table, but it does
-            -- not block on autovacuum (SHARE UPDATE EXCLUSIVE lock) or
-            -- create index (SHARE lock).  I believe everything is therefore still
-            -- correct, but this is magic beyond my domain expertise, so I'm
-            -- not 100% certain.
             EXECUTE format('LOCK %s IN EXCLUSIVE MODE', table_to_lock);
             RAISE 'release table lock';
         EXCEPTION WHEN OTHERS THEN

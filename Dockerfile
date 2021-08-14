@@ -93,6 +93,7 @@ RUN apt-get install -y curl \
 # copy over the project
 COPY . /tmp/pg_rollup
 COPY postgresql.conf /etc/postgresql.conf.pg_rollup
-RUN pip3 install -r requirements.txt && pip3 install .
+RUN python3 -m pip install pip --upgrade
+RUN python3 -m pip install -r requirements.txt && pip3 install .
 RUN make USE_PGXS=1 \
  && make USE_PGXS=1 install
