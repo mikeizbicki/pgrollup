@@ -502,7 +502,7 @@ BEGIN
     -- the COALESCEs here are assuming that the sequence is positive;
     -- that's the default value, but these can be changed;
     -- the *REALLY* correct thing to do here is to extract the minimum value from the sequence and use that
-    SELECT table_name, COALESCE(last_aggregated_id,0)+1, LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,pg_sequence_last_value(event_id_sequence_name))
+    SELECT table_name, COALESCE(last_aggregated_id,0)+1, LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,coalesce(pg_sequence_last_value(event_id_sequence_name),0))
     INTO table_to_lock, window_start, window_end
     FROM pgrollup_rollups
     WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
