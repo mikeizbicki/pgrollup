@@ -435,7 +435,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             END;
             $$;
 
-            CREATE OR REPLACE FUNCTION pgrollup_unsafecreatetriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+'''()
+            CREATE OR REPLACE FUNCTION pgr1__'''+self.rollup_name+'__'+joininfo['table_alias']+'''()
             RETURNS VOID LANGUAGE PLPGSQL AS $$
             BEGIN
                 CREATE TRIGGER '''+self.rollup_name+'__'+joininfo['table_alias']+'''_insert
@@ -460,7 +460,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             END;
             $$;
 
-            CREATE OR REPLACE FUNCTION pgrollup_unsafedroptriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+'''()
+            CREATE OR REPLACE FUNCTION pgr2__'''+self.rollup_name+'__'+joininfo['table_alias']+'''()
             RETURNS VOID LANGUAGE PLPGSQL AS $$
             BEGIN
                 '''
@@ -704,7 +704,7 @@ f'''CREATE {temp_str}TABLE '''+self.rollup_table_name+''' (
             '''
             '''.join([
                 'DROP FUNCTION '+self.rollup_table_name+'__'+joininfo['table_alias']+'''_triggerfunc CASCADE;
-                DROP FUNCTION pgrollup_unsafecreatetriggers__'''+self.rollup_name+'__'+joininfo['table_alias']+''' CASCADE;'''
+                DROP FUNCTION pgr1__'''+self.rollup_name+'__'+joininfo['table_alias']+''' CASCADE;'''
                 for joininfo in self.joininfos])
             +
             f'''

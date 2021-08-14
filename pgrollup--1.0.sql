@@ -1036,7 +1036,7 @@ RETURNS VOID AS $func$
         ########################################    
         if pgrollup['mode'] == 'trigger':
             plpy.execute(f'''
-                SELECT pgrollup_unsafedroptriggers__{rollup_name}__{pgrollup['table_alias']}();
+                SELECT pgr2__{rollup_name}__{pgrollup['table_alias']}();
                 ''')
 
         if pgrollup['mode'] == 'cron':
@@ -1099,7 +1099,7 @@ RETURNS VOID AS $func$
 
             # next we create triggers
             plpy.debug('rollup_mode: create_trigger')
-            sql = 'select pgrollup_unsafecreatetriggers__'+rollup_name+'__'+pgrollup['table_alias']+'();'
+            sql = 'select pgr1__'+rollup_name+'__'+pgrollup['table_alias']+'();'
             plpy.execute(sql)
 
     plpy.execute(f"UPDATE pgrollup_rollups SET mode='{mode}' WHERE rollup_name='{rollup_name}';")
