@@ -492,7 +492,6 @@ AS $function$
 DECLARE
     table_to_lock regclass;
 BEGIN
-    RAISE DEBUG 'incremental_rollup_window';
     /*
      * Perform aggregation from the last aggregated ID + 1 up to the last committed ID.
      * We do a SELECT .. FOR UPDATE on the row in the rollup table to prevent
@@ -508,7 +507,6 @@ BEGIN
     WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
       AND pgrollup_rollups.table_alias = incremental_rollup_window.table_alias 
     FOR UPDATE;
-    RAISE DEBUG 'incremental_rollup_window 2';
 
     IF NOT FOUND THEN
         RAISE 'rollup ''%'' is not in pgrollup_rollups', rollup_name;
@@ -534,7 +532,6 @@ BEGIN
         EXCEPTION WHEN OTHERS THEN
         END;
     END IF;
-    RAISE DEBUG 'incremental_rollup_window 3';
 
     /*
      * Remember the end of the window to continue from there next time.
@@ -569,8 +566,8 @@ DECLARE
     start_id bigint;
     end_id bigint;
     event_id_sequence_name TEXT;
+    num_rollups integer;
 BEGIN
-    RAISE DEBUG 'do_rollup';
 
     -- if no rollup_name is provided,
     -- then we'll do a rollup on all of the tables
@@ -586,6 +583,13 @@ BEGIN
                 );
         END LOOP;
         RETURN;
+    END IF;
+
+    -- if there is no rollup with the specified name, throw an error
+    SELECT count(*) INTO num_rollups FROM pgrollup_rollups WHERE pgrollup_rollups.rollup_name=do_rollup.rollup_name;
+    IF num_rollups = 0 THEN
+        RAISE EXCEPTION 'no rollups named %', do_rollup.rollup_name;
+        RETURN; 
     END IF;
 
     -- if no table_alias is provided,
@@ -613,8 +617,6 @@ BEGIN
     IF event_id_sequence_name IS NULL THEN
         RAISE WARNING 'event_id_sequence_name is null';
         RETURN; 
-    ELSE
-        RAISE DEBUG 'do_rollup: event_id_sequence_name is %', event_id_sequence_name;
     END IF;
 
     /* sleeping is how cron ensures that the jobs are staggered in time */
@@ -623,24 +625,19 @@ BEGIN
     /* determine which page views we can safely aggregate */
     SELECT window_start, window_end INTO start_id, end_id
     FROM incremental_rollup_window(rollup_name,table_alias,max_rollup_size,force_safe);
-    RAISE DEBUG 'do_rollup: incremental_rollup_window done; start_id=%, end_id=%', start_id, end_id;
 
     /* exit early if there are no new rows to aggregate */
     IF start_id > end_id OR start_id IS NULL OR end_id IS NULL THEN 
-        RAISE DEBUG 'no new rows to aggregate';
         RETURN QUERY SELECT rollup_name,table_alias,start_id,end_id;
         RETURN;
     END IF;
 
     /* this is the new code that gets the rollup command from the table
      * and executes it */
-    RAISE DEBUG 'do_rollup: execute sql';
     SELECT pgrollup_rollups.sql 
     INTO sql_command
     FROM pgrollup_rollups 
     WHERE pgrollup_rollups.rollup_name = do_rollup.rollup_name;
-
-    RAISE DEBUG 'do_rollup; sql_command=%', sql_command;
     EXECUTE 'select '||sql_command||'($1,$2)' USING start_id,end_id;
 
     -- return
@@ -790,7 +787,6 @@ RETURNS TEXT AS $$
         if "'" in expr:
             return True
         expr = re.sub(r'^[a-zA-Z0-9_]+\.', '', expr)
-        plpy.debug(f'expr={expr}')
         for joininfo in joininfos:
             sql=f'''
             SELECT not pg_attribute.attnotnull AS nullable
@@ -876,9 +872,6 @@ RETURNS TEXT AS $$
         type = get_type(expr)
         nullable = get_nullable(value)
 
-        plpy.debug(f'nullable={nullable}')
-        plpy.debug(f'len(raw_columns)={len(raw_columns)}')
-
         # get the algebra dictionary and key
         sql = f"select * from algebra where name='{algebra}';"
         res = list(plpy.execute(sql))
@@ -954,8 +947,6 @@ RETURNS TEXT AS $$
                     if len(matches) > 0:
                         found_seq = True
                         break
-                if found_seq:
-                    plpy.debug(f'rollup_column={rollup_column}, event_id_sequence_name={event_id_sequence_name }')
         joininfo['rollup_column'] = rollup_column
         joininfo['event_id_sequence_name'] = event_id_sequence_name
 
@@ -1017,12 +1008,10 @@ CREATE OR REPLACE FUNCTION rollup_mode(
 )
 RETURNS VOID AS $func$
     
-    plpy.debug('rollup_mode')
     sql = (f"select * from pgrollup_rollups where rollup_name='{rollup_name}'")
     rows = list(plpy.execute(sql))
 
     for i,pgrollup in enumerate(rows):
-        plpy.debug('rollup_mode: row i='+str(i))
         if mode != 'trigger' and pgrollup['event_id_sequence_name'] is None:
             plpy.error(f'''"mode" must be 'trigger' when "event_id_sequence_name" is NULL''')
 
@@ -1087,18 +1076,14 @@ RETURNS VOID AS $func$
             # ideally, it should be set automatically for each rollup and not hard coded.
 
         if mode=='trigger':
-            plpy.debug('rollup_mode: trigger')
 
             # first we do a manual rollup to ensure that the rollup table is up to date
             if pgrollup['event_id_sequence_name'] is not None:
-                plpy.debug("rollup_mode: pgrollup['event_id_sequence_name']="+str(pgrollup['event_id_sequence_name']))
-
                 plpy.execute(f"""
                     select do_rollup('{rollup_name}','{pgrollup['table_alias']}');
                     """)
 
             # next we create triggers
-            plpy.debug('rollup_mode: create_trigger')
             sql = 'select pgr1__'+rollup_name+'__'+pgrollup['table_alias']+'();'
             plpy.execute(sql)
 

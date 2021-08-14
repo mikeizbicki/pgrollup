@@ -1,0 +1,9 @@
+SET client_min_messages TO WARNING;
+-- if we call pg_rollup functinos on a table that doesn't exist, they should throw an informative error
+select do_rollup('table_does_not_exist');
+ERROR:  no rollups named table_does_not_exist
+CONTEXT:  PL/pgSQL function do_rollup(text,text,bigint,boolean,integer) line 32 at RAISE
+select rollup_mode('table_does_not_exist', 'trigger');
+ERROR:  relation "table_does_not_exist" does not exist
+LINE 1: select rollup_mode('table_does_not_exist', 'trigger');
+                           ^
