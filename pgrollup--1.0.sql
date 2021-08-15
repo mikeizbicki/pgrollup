@@ -414,6 +414,16 @@ CREATE TABLE pgrollup_rollups (
     PRIMARY KEY (rollup_name,table_alias)
 );
 
+CREATE VIEW pgrollup_progress AS (
+    SELECT
+        rollup_name,
+        table_alias,
+        last_aggregated_id,
+        last_aggregated_id/pg_sequence_last_value(event_id_sequence_name)::FLOAT AS fraction_complete
+    FROM pgrollup_rollups
+    ORDER BY rollup_name
+);
+
 CREATE TABLE pgrollup_settings (
     name TEXT PRIMARY KEY,
     value TEXT NOT NULL
