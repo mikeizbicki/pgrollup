@@ -553,6 +553,32 @@ END;
 $function$;
 
 
+/*
+ * In postgres, procedures are different than functions in that functions must use exactly 1 transaction,
+ * but precedures can commit transactions mid call.
+ * The update_rollup procedure uses the ability to commit transactiosn to ensure that the work done when updating is progressively committed.
+ * It is a strictly more useful update method than the do_rollup function with the exception that procedures require postgresql >= 11.
+ * All other features in this library work with postgresql >= 10.
+ */
+CREATE PROCEDURE update_rollup(
+    rollup_name text,
+    table_alias text default null,
+    block_size integer default 10000
+)
+LANGUAGE plpgsql AS $$
+DECLARE
+    start_id BIGINT;
+    end_id BIGINT;
+BEGIN
+    SELECT do_rollup.start_id, do_rollup.end_id INTO start_id, end_id FROM do_rollup(rollup_name, table_alias, max_rollup_size=>block_size);
+    WHILE start_id < end_id LOOP
+        SELECT do_rollup.start_id, do_rollup.end_id INTO start_id, end_id FROM do_rollup(rollup_name, table_alias, max_rollup_size=>block_size);
+        COMMIT;
+    END LOOP;
+END
+$$;
+
+
 CREATE FUNCTION do_rollup(
     rollup_name text default null,
     table_alias text default null,
@@ -1032,6 +1058,9 @@ RETURNS VOID AS $func$
         # the rollup tables are consistent with the underlying table;
         # this requires calling the do_rollup function for all non-trigger options,
         # which is potentially an expensive operation.
+        # FIXME:
+        # the calls to do_rollup should be replaced with update_rollup,
+        # but this requires converting everything into a procedure from a function
         ########################################    
         if pgrollup['mode'] == 'trigger':
             plpy.execute(f'''
@@ -1055,35 +1084,13 @@ RETURNS VOID AS $func$
         # enter the new mode
         ########################################    
         if mode=='cron':
-            sql = "SELECT value FROM pgrollup_settings WHERE name='cron_max_rollup_size';"
-            cron_max_rollup_size = int(plpy.execute(sql)[0]['value'])
-
-            # we use a "random" delay on the cron job to ensure that all of the jobs
-            # do not happen at the same time, overloading the database
-            sql = (f"""
-                SELECT count(*) AS count
-                FROM cron.job
-                WHERE jobname ILIKE 'pgrollup.%';
-                """)
-            num_jobs = plpy.execute(sql)[0]['count']
-            # delay = 13*num_jobs%60
-            delay = 0
             plpy.execute(f'''
                 SELECT cron.schedule(
                     'pgrollup.{rollup_name}',
                     '* * * * *',
-                    $$SELECT do_rollup('{rollup_name}',max_rollup_size=>{cron_max_rollup_size},delay_seconds=>{delay});$$
+                    $$CALL update_rollup('{rollup_name}','{pgrollup['table_alias']}');$$
                 );
                 ''')
-            # FIXME:
-            # we specify the max_rollup_size for cron-based rollups because:
-            # for very expensive rollups, a full rollup can take longer than a minute to complete;
-            # in heavy-insert operations, this result in a backlog of rows that need to be rolled up;
-            # subsequent calls to do_rollup will have more work to do, and therefore take longer, exacerbating the problem;
-            # by limiting the max_rollup_size, we prevent a quadratic growth in the backlog size;
-            # if the rollup is very fast, however, we prevent it from rolling up properly;
-            # the optimal number depends on many factors, such as the speed of the rollup and config params like work_mem;
-            # ideally, it should be set automatically for each rollup and not hard coded.
 
         if mode=='trigger':
 
