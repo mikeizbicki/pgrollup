@@ -536,11 +536,13 @@ BEGIN
      * such that writes can resume.
      */
     IF force_safe THEN
+        RAISE DEBUG 'locking table %s', table_to_lock;
         BEGIN
             EXECUTE format('LOCK %s IN EXCLUSIVE MODE', table_to_lock);
             RAISE 'release table lock';
         EXCEPTION WHEN OTHERS THEN
         END;
+        RAISE DEBUG 'lock released on %s', table_to_lock;
     END IF;
 
     /*
