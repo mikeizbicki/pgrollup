@@ -150,7 +150,7 @@ for i in range(args.numproc):
 
 if args.mode == 'manual':
     logging.info('create the rollup process (manual mode only)')
-    sql = "select do_rollup('test_view');"
+    sql = "call update_rollup('test_view');"
     proc = Process(target=get_process_function(sql, count_transactions=False, delay_seconds=1, multiplicity=1))
     proc.start()
     procs.append(proc)
@@ -167,8 +167,8 @@ for proc in procs:
     proc.join()
 
 if args.mode in ['manual', 'cron']:
-    logging.info('perform final do_rollup to ensure the rollup is up to date')
-    sql = "select do_rollup('test_view');"
+    logging.info('perform final update_rollup to ensure the rollup is up to date')
+    sql = "call update_rollup('test_view');"
     curs = conn.cursor()
     curs.execute(sql)
 
