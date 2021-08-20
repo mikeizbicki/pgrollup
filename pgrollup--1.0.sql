@@ -430,7 +430,7 @@ CREATE TABLE pgrollup_settings (
 );
 INSERT INTO pgrollup_settings (name,value) VALUES
     ('default_mode','trigger'),
-    ('cron_max_rollup_size','100000');
+    ('cron_block_size','10000');
 
 /*
  * Whenever the source table for a rollup is dropped,
@@ -1096,11 +1096,12 @@ RETURNS VOID AS $func$
         # enter the new mode
         ########################################    
         if mode=='cron':
+            cron_block_size = plpy.execute("select value from pgrollup_settings where name='cron_block_size';")[0]['value'];
             plpy.execute(f'''
                 SELECT cron.schedule(
                     'pgrollup.{rollup_name}',
                     '* * * * *',
-                    $$CALL update_rollup('{rollup_name}','{pgrollup['table_alias']}');$$
+                    $$CALL update_rollup('{rollup_name}','{pgrollup['table_alias']}', block_size=>{cron_block_size});$$
                 );
                 ''')
 
