@@ -511,12 +511,14 @@ BEGIN
     -- the COALESCEs here are assuming that the sequence is positive;
     -- that's the default value, but these can be changed;
     -- the *REALLY* correct thing to do here is to extract the minimum value from the sequence and use that
+    RAISE DEBUG 'SELECT FOR UPDATE ON rollup_name=%s, table_alias=%s', rollup_name, table_alias;
     SELECT table_name, COALESCE(last_aggregated_id,0)+1, LEAST(COALESCE(last_aggregated_id,0)+max_rollup_size+1,coalesce(pg_sequence_last_value(event_id_sequence_name),0))
     INTO table_to_lock, window_start, window_end
     FROM pgrollup_rollups
     WHERE pgrollup_rollups.rollup_name = incremental_rollup_window.rollup_name 
       AND pgrollup_rollups.table_alias = incremental_rollup_window.table_alias 
     FOR UPDATE;
+    RAISE DEBUG 'SELECT FOR UPDATE complete';
 
     IF NOT FOUND THEN
         RAISE 'rollup ''%'' is not in pgrollup_rollups', rollup_name;
@@ -687,7 +689,8 @@ $function$;
 CREATE OR REPLACE FUNCTION pgrollup_from_matview(
     view_name REGCLASS,
     mode TEXT DEFAULT NULL,
-    partition_clause TEXT DEFAULT NULL,
+    partition_method TEXT DEFAULT NULL,
+    partition_keys TEXT[] DEFAULT NULL,
     dry_run BOOLEAN DEFAULT FALSE
 )
 RETURNS VOID AS $$
@@ -717,7 +720,8 @@ RETURNS VOID AS $$
         +str(dry_run)+","
         +('NULL' if not mode else "'"+mode+"'")+","
         +('NULL' if not tablespace else "'"+tablespace+"'")+','
-        +('NULL' if not partition_clause else "'"+partition_clause+"'")
+        +('NULL' if not partition_method else "'"+partition_method+"'")+','
+        +('NULL' if not partition_keys else "ARRAY"+str(partition_keys))
     +""")""")
     plpy.execute(sql)
 $$
@@ -729,7 +733,8 @@ CREATE OR REPLACE FUNCTION pgrollup_parse(
     dry_run BOOLEAN DEFAULT FALSE,
     mode TEXT DEFAULT NULL,
     tablespace TEXT DEFAULT NULL,
-    partition_clause TEXT DEFAULT NULL
+    partition_method TEXT DEFAULT NULL,
+    partition_keys TEXT[] DEFAULT NULL
 )
 RETURNS VOID AS $$
     import pgrollup.parsing
@@ -746,7 +751,8 @@ RETURNS VOID AS $$
             dry_run => $7,
             mode => $8,
             tablespace => $9,
-            partition_clause => $10
+            partition_method => $10,
+            partition_keys => $11
         ) as result;'''
         plan = plpy.prepare(sql,[
             'text',
@@ -759,6 +765,7 @@ RETURNS VOID AS $$
             'text',
             'text',
             'text',
+            'text[]',
             ])
         result = plpy.execute(plan,[
             cmd['rollup_name'],
@@ -770,7 +777,8 @@ RETURNS VOID AS $$
             dry_run,
             mode,
             tablespace,
-            partition_clause
+            partition_method,
+            partition_keys,
             ])
 $$
 LANGUAGE plpython3u;
@@ -784,7 +792,8 @@ CREATE OR REPLACE FUNCTION create_rollup_internal(
     where_clause TEXT DEFAULT NULL,
     having_clause TEXT DEFAULT NULL,
     tablespace TEXT DEFAULT NULL,
-    partition_clause TEXT DEFAULT NULL,
+    partition_method TEXT DEFAULT NULL,
+    partition_keys TEXT[] DEFAULT NULL,
     mode TEXT DEFAULT NULL,
     dry_run BOOLEAN DEFAULT FALSE
     )
@@ -1019,7 +1028,8 @@ RETURNS TEXT AS $$
         columns_view_list,
         where_clause,
         having_clause,
-        partition_clause,
+        partition_method,
+        partition_keys,
     ).create()
 
     # set the rollup mode
@@ -1213,3 +1223,19 @@ CREATE OR REPLACE FUNCTION assert_rollup_relative_error(rollup_name REGCLASS, re
     assert num_bad_columns==0
 
 $$ LANGUAGE plpython3u STRICT IMMUTABLE PARALLEL SAFE;
+
+
+------------------------------------------------------------------------------------------------------------------------
+-- helper functions
+
+CREATE PROCEDURE create_hash_partitions(
+    table_name text,
+    modulus integer
+)
+LANGUAGE plpgsql AS $$
+BEGIN
+    FOR i in 0..modulus-1 LOOP
+        EXECUTE format('CREATE TABLE %I PARTITION OF %I FOR VALUES WITH (modulus %s, remainder %s);', table_name||'_hash'||(i::text), table_name, modulus, i);
+    END LOOP;
+END
+$$;
